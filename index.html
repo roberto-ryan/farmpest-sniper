@@ -1,0 +1,3514 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>FarmPest Sniper // Digital IR Optics</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --reticle-green: #39ff5a;
+      --ir-bg: #070809;
+      --hud-text: #d8e0db;
+      --hud-dim: rgba(216, 224, 219, 0.62);
+      --hud-border: rgba(255, 255, 255, 0.14);
+      --hud-panel: rgba(8, 10, 11, 0.68);
+    }
+
+    * {
+      box-sizing: border-box;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+    }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--ir-bg);
+      color: var(--hud-text);
+      font-family: 'Inter', system-ui, -apple-system, sans-serif;
+      touch-action: none;
+    }
+
+    .mono {
+      font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+    }
+
+    #game-container {
+      position: fixed;
+      inset: 0;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+      background: #050606;
+    }
+
+    #game-container canvas {
+      display: block;
+      width: 100% !important;
+      height: 100% !important;
+      cursor: crosshair;
+    }
+
+    /* Exact Digital Airgun Scope Green T-Reticle (#39ff5a) */
+    #reticle-layer {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 20;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #reticle-svg {
+      width: 160px;
+      height: 160px;
+      overflow: visible;
+      filter: drop-shadow(0 0 1.5px rgba(0, 0, 0, 0.85)) drop-shadow(0 0 3px rgba(57, 255, 90, 0.35));
+      transition: transform 0.06s ease-out;
+    }
+
+    /* Hitmarker micro-flash */
+    #hitmarker {
+      position: fixed;
+      left: 50%;
+      top: 50%;
+      width: 34px;
+      height: 34px;
+      transform: translate(-50%, -50%) scale(0.75);
+      pointer-events: none;
+      z-index: 21;
+      opacity: 0;
+      transition: opacity 0.14s ease-out, transform 0.14s ease-out;
+    }
+
+    #hitmarker.active {
+      opacity: 1;
+      transform: translate(-50%, -50%) scale(1);
+    }
+
+    /* Minimal Scope HUD */
+    #scope-hud {
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      z-index: 25;
+      transition: opacity 0.2s ease;
+    }
+
+    #scope-hud.raw-hidden {
+      opacity: 0 !important;
+    }
+
+    .hud-chip {
+      background: rgba(6, 8, 9, 0.52);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      border-radius: 6px;
+    }
+
+    .rec-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      background: #e5484d;
+      box-shadow: 0 0 8px rgba(229, 72, 77, 0.85);
+      animation: recBlink 1.2s infinite ease-in-out;
+    }
+
+    @keyframes recBlink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.25; }
+    }
+
+    /* Breath stamina & reload bars below center reticle */
+    #center-indicators {
+      position: fixed;
+      left: 50%;
+      top: calc(50% + 56px);
+      transform: translateX(-50%);
+      z-index: 26;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .tactical-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 40;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      background: radial-gradient(circle at center, rgba(6, 8, 9, 0.42) 0%, rgba(4, 5, 6, 0.82) 100%);
+      backdrop-filter: blur(3px);
+      -webkit-backdrop-filter: blur(3px);
+      transition: opacity 0.28s ease;
+    }
+
+    .tactical-card {
+      width: 100%;
+      max-width: 560px;
+      background: rgba(10, 12, 13, 0.84);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      box-shadow: 0 24px 60px rgba(0, 0, 0, 0.72), inset 0 1px 0 rgba(255, 255, 255, 0.08);
+      border-radius: 14px;
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+    }
+
+    .tactical-btn {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      border-radius: 10px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      transition: all 0.16s ease;
+      cursor: pointer;
+    }
+
+    .tactical-btn-primary {
+      background: linear-gradient(180deg, rgba(57, 255, 90, 0.22) 0%, rgba(28, 135, 50, 0.26) 100%);
+      border: 1px solid rgba(57, 255, 90, 0.65);
+      color: #eaffed;
+      box-shadow: 0 0 18px rgba(57, 255, 90, 0.16), inset 0 1px 0 rgba(255, 255, 255, 0.18);
+    }
+
+    .tactical-btn-primary:hover {
+      background: linear-gradient(180deg, rgba(57, 255, 90, 0.34) 0%, rgba(28, 135, 50, 0.38) 100%);
+      box-shadow: 0 0 24px rgba(57, 255, 90, 0.3);
+      transform: translateY(-1px);
+    }
+
+    .tactical-btn-secondary {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #e2e8e4;
+    }
+
+    .tactical-btn-secondary:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: rgba(255, 255, 255, 0.35);
+      transform: translateY(-1px);
+    }
+
+    /* Toast feedback */
+    #kill-feed {
+      position: fixed;
+      top: 66px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 28;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 4px;
+    }
+
+    .feed-item {
+      padding: 3px 10px;
+      border-radius: 5px;
+      background: rgba(8, 10, 11, 0.65);
+      border: 1px solid rgba(57, 255, 90, 0.35);
+      color: #d9ffe0;
+      font-size: 11px;
+      letter-spacing: 0.08em;
+      animation: feedFade 1.5s forwards ease-out;
+    }
+
+    @keyframes feedFade {
+      0% { opacity: 0; transform: translateY(6px); }
+      14% { opacity: 1; transform: translateY(0); }
+      78% { opacity: 1; transform: translateY(-2px); }
+      100% { opacity: 0; transform: translateY(-10px); }
+    }
+
+    /* Touch controls for mobile/tablet */
+    #touch-controls {
+      position: fixed;
+      bottom: 14px;
+      left: 14px;
+      right: 14px;
+      z-index: 32;
+      display: none;
+      justify-content: space-between;
+      align-items: flex-end;
+      pointer-events: none;
+    }
+
+    #touch-controls.visible {
+      display: flex;
+    }
+
+    .touch-btn {
+      pointer-events: auto;
+      background: rgba(10, 12, 13, 0.72);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      color: #e4ece6;
+      border-radius: 12px;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 600;
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
+      active-scale: 0.95;
+    }
+
+    .touch-fire-btn {
+      width: 68px;
+      height: 68px;
+      border-radius: 9999px;
+      background: radial-gradient(circle, rgba(57, 255, 90, 0.28) 0%, rgba(16, 42, 22, 0.85) 100%);
+      border: 2px solid rgba(57, 255, 90, 0.78);
+      color: #eaffed;
+      font-weight: 700;
+      box-shadow: 0 0 18px rgba(57, 255, 90, 0.28);
+    }
+
+    /* Loading overlay */
+    #loading-overlay {
+      position: fixed;
+      inset: 0;
+      z-index: 60;
+      background: #060708;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 14px;
+      transition: opacity 0.35s ease;
+    }
+  </style>
+</head>
+<body>
+  <!-- Main 3D WebGL Viewport -->
+  <div id="game-container" aria-label="FarmPest Sniper 3D IR Night Vision Viewport"></div>
+
+  <!-- Exact Digital Scope Bright-Green T-Reticle (#39ff5a) — Horizontal bars + center gap + downward post ONLY -->
+  <div id="reticle-layer">
+    <svg id="reticle-svg" viewBox="-80 -80 160 160" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <!-- Left horizontal bar -->
+      <line x1="-42" y1="0" x2="-4.5" y2="0" stroke="#39ff5a" stroke-width="1.35" stroke-linecap="butt" />
+      <!-- Right horizontal bar -->
+      <line x1="4.5" y1="0" x2="42" y2="0" stroke="#39ff5a" stroke-width="1.35" stroke-linecap="butt" />
+      <!-- Downward vertical post ONLY (no upward vertical post) -->
+      <line x1="0" y1="4.5" x2="0" y2="42" stroke="#39ff5a" stroke-width="1.35" stroke-linecap="butt" />
+    </svg>
+  </div>
+
+  <!-- Subtle Hitmarker -->
+  <svg id="hitmarker" viewBox="0 0 36 36" fill="none" xmlns="http://www.w3.org/2000/svg">
+    <line x1="7" y1="7" x2="13" y2="13" stroke="#39ff5a" stroke-width="1.8" stroke-linecap="round" />
+    <line x1="29" y1="7" x2="23" y2="13" stroke="#39ff5a" stroke-width="1.8" stroke-linecap="round" />
+    <line x1="7" y1="29" x2="13" y2="23" stroke="#39ff5a" stroke-width="1.8" stroke-linecap="round" />
+    <line x1="29" y1="29" x2="23" y2="23" stroke="#39ff5a" stroke-width="1.8" stroke-linecap="round" />
+  </svg>
+
+  <!-- Center Breath & Reload Indicators -->
+  <div id="center-indicators">
+    <div id="breath-bar-wrap" class="w-28 h-1.5 bg-black/60 border border-white/15 rounded-full overflow-hidden opacity-0 transition-opacity duration-150">
+      <div id="breath-bar-fill" class="h-full bg-[#39ff5a] transition-all duration-75" style="width: 100%;"></div>
+    </div>
+    <div id="reload-indicator" class="hidden mono text-[11px] tracking-widest uppercase px-2.5 py-1 rounded bg-black/70 border border-white/20 text-zinc-200">
+      RELOADING ROTARY MAG...
+    </div>
+    <div id="empty-mag-hint" class="hidden mono text-[11px] tracking-widest uppercase px-2.5 py-1 rounded bg-black/75 border border-red-400/50 text-red-300">
+      MAG EMPTY — PRESS [R]
+    </div>
+  </div>
+
+  <!-- Kill / Shot Feedback Toast -->
+  <div id="kill-feed" class="mono"></div>
+
+  <!-- Minimal Authentic Digital IR Scope HUD (Toggleable with H key) -->
+  <div id="scope-hud" class="p-3 sm:p-5 flex flex-col justify-between">
+    <!-- Top Row -->
+    <div class="flex items-start justify-between gap-2">
+      <!-- Top Left: REC, Mode, Timer -->
+      <div class="hud-chip px-3 py-2 flex items-center gap-3 mono text-xs">
+        <div class="flex items-center gap-1.5">
+          <span class="rec-dot"></span>
+          <span class="text-zinc-200 font-semibold tracking-wider">IR-REC</span>
+        </div>
+        <span class="text-white/20">|</span>
+        <span id="hud-mode-label" class="text-zinc-300 uppercase tracking-wider text-[11px]">STANDBY</span>
+        <span class="text-white/20">|</span>
+        <span id="hud-timer" class="text-white font-semibold tracking-widest text-sm">01:00</span>
+      </div>
+
+      <!-- Top Right: Scope Optics Telemetry -->
+      <div class="hud-chip px-3 py-2 flex flex-wrap items-center justify-end gap-x-3.5 gap-y-1 mono text-xs">
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-400 text-[10px]">ZOOM</span>
+          <span id="hud-zoom" class="text-[#39ff5a] font-semibold">3.0x</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-400 text-[10px]">RNG</span>
+          <span id="hud-range" class="text-zinc-100 font-medium">8.6 YD</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-400 text-[10px]">IR</span>
+          <span id="hud-ir" class="text-zinc-100 font-medium">HIGH</span>
+        </div>
+        <div class="flex items-center gap-1.5">
+          <span class="text-zinc-400 text-[10px]">MAG</span>
+          <span id="hud-mag" class="text-zinc-100 font-semibold">10/10</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bottom Row -->
+    <div class="flex items-end justify-between gap-2">
+      <!-- Bottom Left: Pest Tally & Accuracy -->
+      <div class="hud-chip px-3 py-2 flex items-center gap-4 mono text-xs">
+        <div>
+          <div class="text-[10px] text-zinc-400 tracking-wider">HITS</div>
+          <div id="hud-hits" class="text-sm font-bold text-white">0</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-zinc-400 tracking-wider">VITALS</div>
+          <div id="hud-headshots" class="text-sm font-bold text-[#39ff5a]">0</div>
+        </div>
+        <div>
+          <div class="text-[10px] text-zinc-400 tracking-wider">ACC</div>
+          <div id="hud-acc" class="text-sm font-semibold text-zinc-200">--%</div>
+        </div>
+        <div class="hidden sm:block">
+          <div class="text-[10px] text-zinc-400 tracking-wider">SCORE</div>
+          <div id="hud-score" class="text-sm font-bold text-zinc-100">0</div>
+        </div>
+      </div>
+
+      <!-- Bottom Right: Subtle Controls Legend -->
+      <div class="hidden md:flex hud-chip px-3 py-2 items-center gap-3 mono text-[10px] text-zinc-300 tracking-wide">
+        <span><b class="text-white">LMB</b> FIRE</span>
+        <span><b class="text-white">RMB/WHEEL</b> ZOOM</span>
+        <span><b class="text-white">SHIFT</b> BREATH</span>
+        <span><b class="text-white">R</b> RELOAD</span>
+        <span><b class="text-white">F</b> IR LEVEL</span>
+        <span><b class="text-white">H</b> RAW HUD</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Mobile / Touch On-Screen Tactical Controls -->
+  <div id="touch-controls">
+    <div class="flex flex-col gap-2">
+      <div class="flex gap-2">
+        <button id="btn-touch-zoom" class="touch-btn mono">ZOOM</button>
+        <button id="btn-touch-ir" class="touch-btn mono">IR</button>
+        <button id="btn-touch-hud" class="touch-btn mono">RAW</button>
+      </div>
+      <div class="flex gap-2">
+        <button id="btn-touch-breath" class="touch-btn mono">HOLD BREATH</button>
+        <button id="btn-touch-reload" class="touch-btn mono">RELOAD</button>
+      </div>
+    </div>
+    <button id="btn-touch-fire" class="touch-btn touch-fire-btn mono">FIRE</button>
+  </div>
+
+  <!-- Start Title Overlay (Live Animated Night-Vision Barn Behind It) -->
+  <div id="start-overlay" class="tactical-overlay">
+    <div class="tactical-card p-6 sm:p-8 text-left">
+      <div class="flex items-center justify-between gap-2 mb-3">
+        <div class="inline-flex items-center gap-2 mono text-[11px] uppercase tracking-widest text-[#39ff5a] px-2.5 py-1 rounded bg-[#39ff5a]/10 border border-[#39ff5a]/30">
+          <span class="w-1.5 h-1.5 rounded-full bg-[#39ff5a]"></span>
+          850NM DIGITAL IR OPTICS
+        </div>
+        <span class="mono text-[11px] text-zinc-400">PCP .22 SUPPRESSED</span>
+      </div>
+
+      <h1 class="text-2xl sm:text-3xl font-bold tracking-tight text-white mb-1.5">
+        FARMPEST SNIPER
+      </h1>
+      <p class="text-xs sm:text-sm text-zinc-300 leading-relaxed mb-5">
+        Monochrome infrared night-vision barn pest clearance. Track tapetum lucidum eyeshine peering from dirt burrows, beneath the tilted trough, and along cracked concrete crevices. Lead subsonic pellets cleanly and steady your breath.
+      </p>
+
+      <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-5">
+        <button id="btn-start-timed" class="tactical-btn tactical-btn-primary px-4 py-3.5 flex-col items-start text-left">
+          <span class="mono text-xs text-[#39ff5a] tracking-widest uppercase">Contract Mode</span>
+          <span class="text-base font-bold text-white">60s Pest Clearance</span>
+          <span class="text-[11px] text-zinc-300 font-normal">Timed sweep with score, vital hits &amp; accuracy report</span>
+        </button>
+
+        <button id="btn-start-endless" class="tactical-btn tactical-btn-secondary px-4 py-3.5 flex-col items-start text-left">
+          <span class="mono text-xs text-zinc-400 tracking-widest uppercase">Sandbox Mode</span>
+          <span class="text-base font-bold text-white">Endless Night Watch</span>
+          <span class="text-[11px] text-zinc-400 font-normal">Uninterrupted free-roam night barn pest control</span>
+        </button>
+      </div>
+
+      <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 pt-4 border-t border-white/10 mono text-[11px] text-zinc-300">
+        <div><span class="text-white font-semibold">MOUSE</span> Aim Scope</div>
+        <div><span class="text-white font-semibold">CLICK</span> Fire Pellet</div>
+        <div><span class="text-white font-semibold">RMB/SCROLL</span> 3x/6x/10x</div>
+        <div><span class="text-white font-semibold">SHIFT</span> Hold Breath</div>
+        <div><span class="text-white font-semibold">R / F</span> Reload / IR</div>
+        <div><span class="text-white font-semibold">H</span> Raw Footage</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pause Overlay (Pointer Lock Released / ESC) -->
+  <div id="pause-overlay" class="tactical-overlay hidden">
+    <div class="tactical-card max-w-md p-6 text-center">
+      <div class="mono text-xs tracking-widest text-[#39ff5a] uppercase mb-2">OPTICS STANDBY</div>
+      <h2 class="text-xl font-bold text-white mb-2">Night Watch Paused</h2>
+      <p class="text-xs text-zinc-400 mb-5">Click below to re-engage the scope reticle or switch operational mode.</p>
+      <div class="flex flex-col sm:flex-row gap-3 justify-center">
+        <button id="btn-resume" class="tactical-btn tactical-btn-primary px-5 py-2.5 text-sm">Resume Optics</button>
+        <button id="btn-back-menu" class="tactical-btn tactical-btn-secondary px-5 py-2.5 text-sm">Main Menu</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- End-of-Night After-Action Report (60s Mode) -->
+  <div id="summary-overlay" class="tactical-overlay hidden">
+    <div class="tactical-card max-w-lg p-6 sm:p-7">
+      <div class="flex items-center justify-between mb-2">
+        <span class="mono text-xs tracking-widest text-[#39ff5a] uppercase">AFTER-ACTION REPORT</span>
+        <span class="mono text-xs text-zinc-400">60S PEST CLEARANCE</span>
+      </div>
+      <h2 class="text-2xl font-bold text-white mb-1">Night Sweep Complete</h2>
+      <p id="summary-grade" class="text-xs text-zinc-300 mb-5">Barn perimeter secured.</p>
+
+      <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-6 mono">
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[10px] text-zinc-400">PESTS HIT</div>
+          <div id="sum-hits" class="text-xl font-bold text-white mt-0.5">0</div>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[10px] text-zinc-400">HEADSHOTS</div>
+          <div id="sum-headshots" class="text-xl font-bold text-[#39ff5a] mt-0.5">0</div>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[10px] text-zinc-400">ACCURACY</div>
+          <div id="sum-accuracy" class="text-xl font-bold text-zinc-100 mt-0.5">0%</div>
+        </div>
+        <div class="p-3 rounded-lg bg-white/5 border border-white/10">
+          <div class="text-[10px] text-zinc-400">SCORE</div>
+          <div id="sum-score" class="text-xl font-bold text-white mt-0.5">0</div>
+        </div>
+      </div>
+
+      <div class="flex flex-col sm:flex-row gap-3">
+        <button id="btn-replay-timed" class="tactical-btn tactical-btn-primary flex-1 py-3 text-sm">Run 60s Sweep Again</button>
+        <button id="btn-switch-endless" class="tactical-btn tactical-btn-secondary flex-1 py-3 text-sm">Endless Night Watch</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Procedural Asset Generation Loading Screen -->
+  <div id="loading-overlay">
+    <div class="mono text-xs tracking-[0.22em] text-[#39ff5a] uppercase">INITIALIZING 850NM IR SENSOR</div>
+    <div class="w-56 h-1.5 bg-white/10 rounded-full overflow-hidden">
+      <div id="loading-bar" class="h-full bg-[#39ff5a] transition-all duration-150" style="width: 15%;"></div>
+    </div>
+    <div id="loading-status" class="mono text-[11px] text-zinc-400">Synthesizing 1024px PBR barn textures...</div>
+  </div>
+
+  <script type="module">
+    import * as THREE from 'https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js';
+
+    // =========================================================================
+    // 1. GLOBAL CONFIGURATION & GAME STATE
+    // =========================================================================
+    const CONFIG = {
+      camPos: new THREE.Vector3(0, 2.38, 7.85),
+      yawMin: -0.78,       // Full panoramic pan across Left, Center, Right barn zones (~16m wide)
+      yawMax: 0.78,
+      pitchMin: -0.44,
+      pitchMax: 0.08,
+      zoomLevels: [
+        { label: '3.0x', fov: 27.5, sens: 0.00165, sway: 1.0,  digitalSoftness: 0.0 },
+        { label: '6.0x', fov: 14.5, sens: 0.00095, sway: 1.35, digitalSoftness: 0.22 },
+        { label: '10.0x', fov: 8.8, sens: 0.00058, sway: 1.78, digitalSoftness: 0.62 }
+      ],
+      irLevels: [
+        { label: 'LOW',  main: 125, fill: 28, ambient: 0.075 },
+        { label: 'MED',  main: 225, fill: 46, ambient: 0.105 },
+        { label: 'HIGH', main: 355, fill: 68, ambient: 0.135 }
+      ],
+      magCapacity: 10,
+      reloadDuration: 1.65,
+      pelletSpeed: 74,     // Subsonic visual travel speed (~0.11s flight over 8.5m for visible IR streak)
+      pelletGravity: 3.8,  // Subtle calibrated airgun arc
+      roundDuration: 60,
+      maxRats: 9
+    };
+
+    const state = {
+      phase: 'menu',       // 'menu' | 'playing' | 'paused' | 'summary'
+      mode: 'timed',       // 'timed' | 'endless'
+      yaw: -0.05,
+      pitch: -0.23,
+      zoomIndex: 0,
+      currentFov: CONFIG.zoomLevels[0].fov,
+      irIndex: 2,          // Default HIGH IR torch
+      ammo: CONFIG.magCapacity,
+      reloading: false,
+      reloadTimer: 0,
+      fireCooldown: 0,
+      holdingBreath: false,
+      breathStamina: 1.0,
+      breathExhausted: false,
+      rawHud: false,
+      pointerLocked: false,
+      isDragging: false,
+      lastPointerX: 0,
+      lastPointerY: 0,
+      recoilPitch: 0,
+      recoilYaw: 0,
+      recoilShake: 0,
+      // Match stats
+      timeRemaining: CONFIG.roundDuration,
+      elapsedEndless: 0,
+      shotsFired: 0,
+      hits: 0,
+      headshots: 0,
+      score: 0,
+      // Menu auto-pan
+      menuTime: 0
+    };
+
+    // DOM references
+    const dom = {
+      container: document.getElementById('game-container'),
+      loadingOverlay: document.getElementById('loading-overlay'),
+      loadingBar: document.getElementById('loading-bar'),
+      loadingStatus: document.getElementById('loading-status'),
+      startOverlay: document.getElementById('start-overlay'),
+      pauseOverlay: document.getElementById('pause-overlay'),
+      summaryOverlay: document.getElementById('summary-overlay'),
+      scopeHud: document.getElementById('scope-hud'),
+      reticleSvg: document.getElementById('reticle-svg'),
+      hitmarker: document.getElementById('hitmarker'),
+      breathWrap: document.getElementById('breath-bar-wrap'),
+      breathFill: document.getElementById('breath-bar-fill'),
+      reloadInd: document.getElementById('reload-indicator'),
+      emptyHint: document.getElementById('empty-mag-hint'),
+      killFeed: document.getElementById('kill-feed'),
+      hudMode: document.getElementById('hud-mode-label'),
+      hudTimer: document.getElementById('hud-timer'),
+      hudZoom: document.getElementById('hud-zoom'),
+      hudRange: document.getElementById('hud-range'),
+      hudIr: document.getElementById('hud-ir'),
+      hudMag: document.getElementById('hud-mag'),
+      hudHits: document.getElementById('hud-hits'),
+      hudHeadshots: document.getElementById('hud-headshots'),
+      hudAcc: document.getElementById('hud-acc'),
+      hudScore: document.getElementById('hud-score'),
+      sumHits: document.getElementById('sum-hits'),
+      sumHeadshots: document.getElementById('sum-headshots'),
+      sumAccuracy: document.getElementById('sum-accuracy'),
+      sumScore: document.getElementById('sum-score'),
+      summaryGrade: document.getElementById('summary-grade'),
+      touchControls: document.getElementById('touch-controls')
+    };
+
+    // =========================================================================
+    // 2. PROCEDURAL 1024x1024 PBR TEXTURE SYNTHESIS ENGINE
+    //    Generates Albedo, Normal (Sobel from heightfield), Roughness & Bump
+    // =========================================================================
+    function createHashNoise(seed = 1337) {
+      let s = seed >>> 0;
+      const perm = new Uint8Array(512);
+      for (let i = 0; i < 256; i++) perm[i] = i;
+      for (let i = 255; i > 0; i--) {
+        s = (s * 1664525 + 1013904223) >>> 0;
+        const j = s % (i + 1);
+        const t = perm[i]; perm[i] = perm[j]; perm[j] = t;
+      }
+      for (let i = 0; i < 256; i++) perm[i + 256] = perm[i];
+
+      function fade(t) { return t * t * t * (t * (t * 6 - 15) + 10); }
+      function lerp(a, b, t) { return a + (b - a) * t; }
+
+      function value2D(x, y, period = 256) {
+        const xi = Math.floor(x);
+        const yi = Math.floor(y);
+        const xf = x - xi;
+        const yf = y - yi;
+        const X0 = ((xi % period) + period) % period;
+        const Y0 = ((yi % period) + period) % period;
+        const X1 = (X0 + 1) % period;
+        const Y1 = (Y0 + 1) % period;
+
+        const aa = perm[(perm[X0 & 255] + (Y0 & 255)) & 255] / 255;
+        const ba = perm[(perm[X1 & 255] + (Y0 & 255)) & 255] / 255;
+        const ab = perm[(perm[X0 & 255] + (Y1 & 255)) & 255] / 255;
+        const bb = perm[(perm[X1 & 255] + (Y1 & 255)) & 255] / 255;
+
+        const u = fade(xf);
+        const v = fade(yf);
+        return lerp(lerp(aa, ba, u), lerp(ab, bb, u), v);
+      }
+
+      function fbm(x, y, octaves = 5, basePeriod = 16) {
+        let sum = 0;
+        let amp = 0.5;
+        let freq = 1;
+        let norm = 0;
+        for (let o = 0; o < octaves; o++) {
+          sum += amp * value2D(x * freq, y * freq, basePeriod * freq);
+          norm += amp;
+          amp *= 0.5;
+          freq *= 2;
+        }
+        return sum / norm;
+      }
+
+      return { value2D, fbm };
+    }
+
+    /**
+     * Converts a Float32Array heightmap (size x size) into a Three.js NormalMap texture via Sobel operator.
+     */
+    function buildNormalTextureFromHeight(heightField, size, strength = 4.0, repeatX = 1, repeatY = 1) {
+      const canvas = document.createElement('canvas');
+      canvas.width = size;
+      canvas.height = size;
+      const ctx = canvas.getContext('2d');
+      const img = ctx.createImageData(size, size);
+      const d = img.data;
+
+      const idx = (x, y) => (((y + size) % size) * size + ((x + size) % size));
+
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          const tl = heightField[idx(x - 1, y - 1)];
+          const t  = heightField[idx(x,     y - 1)];
+          const tr = heightField[idx(x + 1, y - 1)];
+          const l  = heightField[idx(x - 1, y    )];
+          const r  = heightField[idx(x + 1, y    )];
+          const bl = heightField[idx(x - 1, y + 1)];
+          const b  = heightField[idx(x,     y + 1)];
+          const br = heightField[idx(x + 1, y + 1)];
+
+          const dx = (tr + 2 * r + br) - (tl + 2 * l + bl);
+          const dy = (bl + 2 * b + br) - (tl + 2 * t + tr);
+
+          let nx = -dx * strength;
+          let ny = -dy * strength;
+          let nz = 1.0;
+          const invLen = 1.0 / Math.sqrt(nx * nx + ny * ny + nz * nz);
+          nx *= invLen; ny *= invLen; nz *= invLen;
+
+          const p = (y * size + x) * 4;
+          d[p]     = Math.round((nx * 0.5 + 0.5) * 255);
+          d[p + 1] = Math.round((ny * 0.5 + 0.5) * 255);
+          d[p + 2] = Math.round((nz * 0.5 + 0.5) * 255);
+          d[p + 3] = 255;
+        }
+      }
+      ctx.putImageData(img, 0, 0);
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.anisotropy = 8;
+      return tex;
+    }
+
+    function canvasToTexture(canvas, isColor = true, repeatX = 1, repeatY = 1) {
+      const tex = new THREE.CanvasTexture(canvas);
+      tex.wrapS = tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(repeatX, repeatY);
+      tex.anisotropy = 8;
+      if (isColor) tex.colorSpace = THREE.SRGBColorSpace;
+      return tex;
+    }
+
+    /**
+     * Generates all 1024x1024 procedural PBR texture sets (Albedo, Normal, Roughness, Bump).
+     */
+    function generateAllPBRTextures() {
+      const SIZE = 1024;
+      const textures = {};
+
+      // --- A. DUSTY GRAVEL DIRT (Floor, Mounds, Clods) ---
+      {
+        const noise = createHashNoise(1042);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        const bmpC = document.createElement('canvas');
+        albC.width = rghC.width = bmpC.width = SIZE;
+        albC.height = rghC.height = bmpC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const bCtx = bmpC.getContext('2d');
+        const aImg = aCtx.createImageData(SIZE, SIZE);
+        const rImg = rCtx.createImageData(SIZE, SIZE);
+        const bImg = bCtx.createImageData(SIZE, SIZE);
+        const hField = new Float32Array(SIZE * SIZE);
+
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const u = x / SIZE;
+            const v = y / SIZE;
+            const macro = noise.fbm(u * 8, v * 8, 5, 8);
+            const med   = noise.fbm(u * 24, v * 24, 4, 24);
+            const grit  = noise.value2D(u * 128, v * 128, 128);
+            const pebbleSeed = noise.value2D(u * 48, v * 48, 48);
+            const pebble = pebbleSeed > 0.78 ? (pebbleSeed - 0.78) * 3.8 : 0;
+
+            const h = Math.min(1, Math.max(0, macro * 0.45 + med * 0.30 + grit * 0.14 + pebble * 0.22));
+            hField[y * SIZE + x] = h;
+
+            // IR-friendly earthy gray-tan reflectance (pebbles reflect brighter in 850nm IR)
+            const baseLum = 88 + macro * 55 + med * 28 + grit * 18 + pebble * 72;
+            const p = (y * SIZE + x) * 4;
+            aImg.data[p]     = Math.min(255, baseLum * 1.03);
+            aImg.data[p + 1] = Math.min(255, baseLum * 0.99);
+            aImg.data[p + 2] = Math.min(255, baseLum * 0.92);
+            aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(120, 232 - pebble * 75 - grit * 18));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough;
+            rImg.data[p + 3] = 255;
+
+            const bv = Math.round(h * 255);
+            bImg.data[p] = bImg.data[p + 1] = bImg.data[p + 2] = bv;
+            bImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+        bCtx.putImageData(bImg, 0, 0);
+
+        // Scatter crisp straw flecks & gravel spots on albedo
+        aCtx.strokeStyle = 'rgba(185, 180, 165, 0.28)';
+        for (let i = 0; i < 420; i++) {
+          const sx = (Math.sin(i * 91.7) * 0.5 + 0.5) * SIZE;
+          const sy = (Math.cos(i * 43.3) * 0.5 + 0.5) * SIZE;
+          const ang = (i * 1.7) % Math.PI;
+          aCtx.lineWidth = 1.2;
+          aCtx.beginPath();
+          aCtx.moveTo(sx, sy);
+          aCtx.lineTo(sx + Math.cos(ang) * 9, sy + Math.sin(ang) * 9);
+          aCtx.stroke();
+        }
+
+        textures.dirt = {
+          map: canvasToTexture(albC, true, 5, 3),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 5.2, 5, 3),
+          roughnessMap: canvasToTexture(rghC, false, 5, 3),
+          bumpMap: canvasToTexture(bmpC, false, 5, 3)
+        };
+      }
+
+      // --- B. CRACKED CONCRETE FLOOR SLAB ---
+      {
+        const noise = createHashNoise(2088);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = SIZE;
+        albC.height = rghC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const aImg = aCtx.createImageData(SIZE, SIZE);
+        const rImg = rCtx.createImageData(SIZE, SIZE);
+        const hField = new Float32Array(SIZE * SIZE);
+
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const u = x / SIZE;
+            const v = y / SIZE;
+            const n1 = noise.fbm(u * 6, v * 6, 5, 6);
+            const n2 = noise.fbm(u * 32, v * 32, 4, 32);
+            const pores = noise.value2D(u * 128, v * 128, 128);
+            const pit = pores < 0.14 ? -0.25 : 0;
+            // Hairline cracks via ridged noise
+            const ridge = Math.abs(noise.fbm(u * 10 + 3.1, v * 10 + 1.4, 4, 10) - 0.5);
+            const crack = ridge < 0.014 ? -0.45 * (1 - ridge / 0.014) : 0;
+
+            const h = Math.min(1, Math.max(0, 0.55 + (n1 - 0.5) * 0.35 + (n2 - 0.5) * 0.18 + pit + crack));
+            hField[y * SIZE + x] = h;
+
+            const lum = Math.max(25, Math.min(240, 128 + (n1 - 0.5) * 58 + (n2 - 0.5) * 28 + pit * 70 + crack * 145));
+            const p = (y * SIZE + x) * 4;
+            aImg.data[p]     = lum;
+            aImg.data[p + 1] = lum * 0.99;
+            aImg.data[p + 2] = lum * 0.96;
+            aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(130, 210 - n2 * 45 - crack * 60));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough;
+            rImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+
+        textures.concreteFloor = {
+          map: canvasToTexture(albC, true, 3, 2),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 4.6, 3, 2),
+          roughnessMap: canvasToTexture(rghC, false, 3, 2)
+        };
+      }
+
+      // --- C. ROUGH CONCRETE BLOCK / PLASTERED BARN WALL ---
+      {
+        const noise = createHashNoise(3311);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = SIZE;
+        albC.height = rghC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const aImg = aCtx.createImageData(SIZE, SIZE);
+        const rImg = rCtx.createImageData(SIZE, SIZE);
+        const hField = new Float32Array(SIZE * SIZE);
+
+        const rows = 8;
+        const cols = 4;
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const u = x / SIZE;
+            const v = y / SIZE;
+            const row = Math.floor(v * rows);
+            const uShift = (u + (row % 2) * 0.5 / cols) % 1;
+            const localV = (v * rows) % 1;
+            const localU = (uShift * cols) % 1;
+
+            const mortarH = (localV < 0.045 || localV > 0.955) ? 1 : 0;
+            const mortarV = (localU < 0.025 || localU > 0.975) ? 1 : 0;
+            const mortar = Math.max(mortarH, mortarV);
+
+            const plaster = noise.fbm(u * 8, v * 8, 5, 8);
+            const roughTex = noise.fbm(u * 36, v * 36, 4, 36);
+            // Vertical damp/grime streaks near lower wall
+            const streak = noise.fbm(u * 22, v * 3, 4, 22);
+            const lowerGrime = Math.pow(v, 2.2) * (0.45 + streak * 0.55);
+
+            const h = Math.min(1, Math.max(0, 0.62 + (plaster - 0.5) * 0.25 + (roughTex - 0.5) * 0.14 - mortar * 0.28));
+            hField[y * SIZE + x] = h;
+
+            const lum = Math.max(32, Math.min(235, 148 + (plaster - 0.5) * 52 + (roughTex - 0.5) * 24 - mortar * 38 - lowerGrime * 52));
+            const p = (y * SIZE + x) * 4;
+            aImg.data[p]     = lum;
+            aImg.data[p + 1] = lum * 0.99;
+            aImg.data[p + 2] = lum * 0.96;
+            aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(150, 224 - plaster * 34 + mortar * 22));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough;
+            rImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+
+        textures.barnWall = {
+          map: canvasToTexture(albC, true, 4, 1.4),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 4.2, 4, 1.4),
+          roughnessMap: canvasToTexture(rghC, false, 4, 1.4)
+        };
+      }
+
+      // --- D. WEATHERED GALVANIZED / RUSTED METAL (Tilted Trough & Right Tub) ---
+      {
+        const noise = createHashNoise(4455);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = SIZE;
+        albC.height = rghC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const aImg = aCtx.createImageData(SIZE, SIZE);
+        const rImg = rCtx.createImageData(SIZE, SIZE);
+        const hField = new Float32Array(SIZE * SIZE);
+
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const u = x / SIZE;
+            const v = y / SIZE;
+            const blotch = noise.fbm(u * 10, v * 10, 5, 10);
+            const rust = noise.fbm(u * 22 + 5, v * 22 + 2, 4, 22);
+            const fine = noise.value2D(u * 96, v * 96, 96);
+            const grimeMask = rust > 0.56 ? (rust - 0.56) * 2.2 : 0;
+
+            const h = Math.min(1, Math.max(0, 0.5 + (blotch - 0.5) * 0.25 + grimeMask * 0.22 + (fine - 0.5) * 0.08));
+            hField[y * SIZE + x] = h;
+
+            // Galvanized steel reflects strongly in IR; rusted/muddy patches appear darker matte
+            const lum = Math.max(38, Math.min(230, 146 + (blotch - 0.5) * 65 - grimeMask * 75 + (fine - 0.5) * 20));
+            const p = (y * SIZE + x) * 4;
+            aImg.data[p]     = lum * (1.0 + grimeMask * 0.08);
+            aImg.data[p + 1] = lum * (0.98 - grimeMask * 0.04);
+            aImg.data[p + 2] = lum * (0.95 - grimeMask * 0.12);
+            aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(85, 138 + grimeMask * 95 + (blotch - 0.5) * 35));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough;
+            rImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+
+        textures.metalTrough = {
+          map: canvasToTexture(albC, true, 1.5, 1.5),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 3.8, 1.5, 1.5),
+          roughnessMap: canvasToTexture(rghC, false, 1.5, 1.5)
+        };
+      }
+
+      // --- E. BARN SUPPORT POSTS / WEATHERED PIPES ---
+      {
+        const noise = createHashNoise(5521);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = SIZE;
+        albC.height = rghC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const aImg = aCtx.createImageData(SIZE, SIZE);
+        const rImg = rCtx.createImageData(SIZE, SIZE);
+        const hField = new Float32Array(SIZE * SIZE);
+
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const u = x / SIZE;
+            const v = y / SIZE;
+            const grain = noise.fbm(u * 26, v * 4, 5, 26);
+            const wear  = noise.fbm(u * 10, v * 10, 4, 10);
+            const h = Math.min(1, Math.max(0, 0.5 + (grain - 0.5) * 0.35 + (wear - 0.5) * 0.18));
+            hField[y * SIZE + x] = h;
+
+            const dustBase = Math.pow(v, 3.0) * 34;
+            const lum = Math.max(45, Math.min(220, 134 + (grain - 0.5) * 44 + (wear - 0.5) * 28 + dustBase));
+            const p = (y * SIZE + x) * 4;
+            aImg.data[p] = lum; aImg.data[p + 1] = lum * 0.99; aImg.data[p + 2] = lum * 0.96; aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(115, 185 + (grain - 0.5) * 40));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough; rImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+
+        textures.post = {
+          map: canvasToTexture(albC, true, 1, 2),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 3.4, 1, 2),
+          roughnessMap: canvasToTexture(rghC, false, 1, 2)
+        };
+      }
+
+      // --- F. WEATHERED PLASTIC FEED / CHEMICAL JUG WITH LABEL ---
+      {
+        const noise = createHashNoise(6617);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = SIZE;
+        albC.height = rghC.height = SIZE;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+
+        // Base dusty matte gray-plastic body
+        aCtx.fillStyle = '#7e807d';
+        aCtx.fillRect(0, 0, SIZE, SIZE);
+        rCtx.fillStyle = '#9a9a9a';
+        rCtx.fillRect(0, 0, SIZE, SIZE);
+
+        // Scuffs and dust smudges
+        for (let i = 0; i < 600; i++) {
+          const x = (Math.sin(i * 12.9898) * 43758.5453 % 1 + 1) % 1 * SIZE;
+          const y = (Math.cos(i * 78.233) * 23421.631 % 1 + 1) % 1 * SIZE;
+          const r = 10 + (i % 45);
+          const v = 90 + (i % 65);
+          aCtx.fillStyle = `rgba(${v},${v},${v},0.08)`;
+          aCtx.beginPath();
+          aCtx.arc(x, y, r, 0, Math.PI * 2);
+          aCtx.fill();
+        }
+
+        // Bright weathered paper label wrapped on side (matching video 00:07-00:10)
+        aCtx.fillStyle = '#c9ccc7';
+        aCtx.fillRect(SIZE * 0.22, SIZE * 0.24, SIZE * 0.54, SIZE * 0.52);
+        // Subtle weathered label stripes/text bands
+        aCtx.fillStyle = '#8b8e89';
+        aCtx.fillRect(SIZE * 0.26, SIZE * 0.30, SIZE * 0.44, SIZE * 0.06);
+        aCtx.fillStyle = '#9ea19c';
+        for (let line = 0; line < 7; line++) {
+          aCtx.fillRect(SIZE * 0.26, SIZE * (0.41 + line * 0.045), SIZE * (0.34 + (line % 3) * 0.05), SIZE * 0.018);
+        }
+        // Dirt scuff over label
+        aCtx.fillStyle = 'rgba(72, 72, 70, 0.28)';
+        aCtx.fillRect(SIZE * 0.56, SIZE * 0.24, SIZE * 0.20, SIZE * 0.52);
+
+        // Paper label rougher than HDPE plastic
+        rCtx.fillStyle = '#dcdcdc';
+        rCtx.fillRect(SIZE * 0.22, SIZE * 0.24, SIZE * 0.54, SIZE * 0.52);
+
+        const hField = new Float32Array(SIZE * SIZE);
+        for (let y = 0; y < SIZE; y++) {
+          for (let x = 0; x < SIZE; x++) {
+            const n = noise.fbm((x / SIZE) * 18, (y / SIZE) * 18, 3, 18);
+            hField[y * SIZE + x] = 0.5 + (n - 0.5) * 0.14;
+          }
+        }
+
+        textures.plasticJug = {
+          map: canvasToTexture(albC, true, 1, 1),
+          normalMap: buildNormalTextureFromHeight(hField, SIZE, 1.8, 1, 1),
+          roughnessMap: canvasToTexture(rghC, false, 1, 1)
+        };
+      }
+
+      // --- G. FINE RODENT FUR TEXTURE ---
+      {
+        const noise = createHashNoise(7789);
+        const albC = document.createElement('canvas');
+        const rghC = document.createElement('canvas');
+        albC.width = rghC.width = 512;
+        albC.height = rghC.height = 512;
+        const aCtx = albC.getContext('2d');
+        const rCtx = rghC.getContext('2d');
+        const aImg = aCtx.createImageData(512, 512);
+        const rImg = rCtx.createImageData(512, 512);
+        const hField = new Float32Array(512 * 512);
+
+        for (let y = 0; y < 512; y++) {
+          for (let x = 0; x < 512; x++) {
+            const u = x / 512;
+            const v = y / 512;
+            // Fine directional fur hairs along body axis
+            const hair = noise.fbm(u * 14, v * 92, 4, 14);
+            const clump = noise.fbm(u * 12, v * 12, 3, 12);
+            // Slightly darker dorsal spine, lighter flanks
+            const spine = Math.cos((u - 0.5) * Math.PI * 2) * 16;
+            const h = Math.min(1, Math.max(0, 0.5 + (hair - 0.5) * 0.55 + (clump - 0.5) * 0.2));
+            hField[y * 512 + x] = h;
+
+            const lum = Math.max(42, Math.min(198, 108 + (hair - 0.5) * 48 + (clump - 0.5) * 26 - spine));
+            const p = (y * 512 + x) * 4;
+            aImg.data[p]     = lum * 1.04;
+            aImg.data[p + 1] = lum * 0.99;
+            aImg.data[p + 2] = lum * 0.92;
+            aImg.data[p + 3] = 255;
+
+            const rough = Math.min(255, Math.max(150, 218 - (hair - 0.5) * 45));
+            rImg.data[p] = rImg.data[p + 1] = rImg.data[p + 2] = rough;
+            rImg.data[p + 3] = 255;
+          }
+        }
+        aCtx.putImageData(aImg, 0, 0);
+        rCtx.putImageData(rImg, 0, 0);
+
+        textures.ratFur = {
+          map: canvasToTexture(albC, true, 1, 1),
+          normalMap: buildNormalTextureFromHeight(hField, 512, 3.6, 1, 1),
+          roughnessMap: canvasToTexture(rghC, false, 1, 1)
+        };
+      }
+
+      // --- H. SOFT VOLUMETRIC IR DUST CLOUD & EYESHINE GLOW SPRITES ---
+      {
+        const dustC = document.createElement('canvas');
+        dustC.width = dustC.height = 256;
+        const ctx = dustC.getContext('2d');
+        const g = ctx.createRadialGradient(128, 128, 8, 128, 128, 122);
+        g.addColorStop(0.0, 'rgba(245, 248, 245, 0.92)');
+        g.addColorStop(0.35, 'rgba(210, 215, 210, 0.52)');
+        g.addColorStop(0.7, 'rgba(160, 165, 160, 0.16)');
+        g.addColorStop(1.0, 'rgba(120, 120, 120, 0.0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(0, 0, 256, 256);
+        textures.dustSprite = new THREE.CanvasTexture(dustC);
+
+        const glowC = document.createElement('canvas');
+        glowC.width = glowC.height = 128;
+        const gCtx = glowC.getContext('2d');
+        const gg = gCtx.createRadialGradient(64, 64, 2, 64, 64, 62);
+        gg.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+        gg.addColorStop(0.24, 'rgba(255, 255, 255, 0.78)');
+        gg.addColorStop(0.55, 'rgba(235, 245, 238, 0.22)');
+        gg.addColorStop(1.0, 'rgba(255, 255, 255, 0.0)');
+        gCtx.fillStyle = gg;
+        gCtx.fillRect(0, 0, 128, 128);
+        textures.eyeGlow = new THREE.CanvasTexture(glowC);
+      }
+
+      return textures;
+    }
+
+    // =========================================================================
+    // 3. PROCEDURAL WEB AUDIO SOUND ENGINE (100% Synthesized, Zero URLs)
+    // =========================================================================
+    class SoundEngine {
+      constructor() {
+        this.ctx = null;
+        this.master = null;
+        this.noiseBuf = null;
+        this.ambienceStarted = false;
+      }
+
+      unlock() {
+        try {
+          if (!this.ctx) {
+            const AudioCtx = window.AudioContext || window.webkitAudioContext;
+            if (!AudioCtx) return;
+            this.ctx = new AudioCtx();
+            this.master = this.ctx.createGain();
+            this.master.gain.value = 0.72;
+            this.master.connect(this.ctx.destination);
+            this.createNoiseBuffer();
+          }
+          if (this.ctx.state === 'suspended') {
+            this.ctx.resume();
+          }
+          if (!this.ambienceStarted) {
+            this.startBarnAmbience();
+            this.ambienceStarted = true;
+          }
+        } catch (e) {
+          console.warn('Audio unlock skipped:', e);
+        }
+      }
+
+      createNoiseBuffer() {
+        const sr = this.ctx.sampleRate;
+        const len = sr * 2.5;
+        const buf = this.ctx.createBuffer(1, len, sr);
+        const data = buf.getChannelData(0);
+        for (let i = 0; i < len; i++) data[i] = Math.random() * 2 - 1;
+        this.noiseBuf = buf;
+      }
+
+      startBarnAmbience() {
+        if (!this.ctx || !this.noiseBuf) return;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuf;
+        src.loop = true;
+
+        const lp = this.ctx.createBiquadFilter();
+        lp.type = 'lowpass';
+        lp.frequency.value = 240;
+
+        const hp = this.ctx.createBiquadFilter();
+        hp.type = 'highpass';
+        hp.frequency.value = 48;
+
+        const gain = this.ctx.createGain();
+        gain.gain.value = 0.045;
+
+        src.connect(hp);
+        hp.connect(lp);
+        lp.connect(gain);
+        gain.connect(this.master);
+        src.start();
+      }
+
+      /** Suppressed PCP Air Rifle Shot: mechanical hammer click + muted pneumatic puff */
+      playPCPShot() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+
+        // 1. Crisp metallic hammer/valve click
+        const clickOsc = this.ctx.createOscillator();
+        const clickGain = this.ctx.createGain();
+        clickOsc.type = 'triangle';
+        clickOsc.frequency.setValueAtTime(1650, now);
+        clickOsc.frequency.exponentialRampToValueAtTime(220, now + 0.028);
+        clickGain.gain.setValueAtTime(0.32, now);
+        clickGain.gain.exponentialRampToValueAtTime(0.001, now + 0.032);
+        clickOsc.connect(clickGain);
+        clickGain.connect(this.master);
+        clickOsc.start(now);
+        clickOsc.stop(now + 0.036);
+
+        // 2. Suppressed high-pressure air puff ("pfft-thup")
+        const puff = this.ctx.createBufferSource();
+        puff.buffer = this.noiseBuf;
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(1150, now);
+        bp.frequency.exponentialRampToValueAtTime(340, now + 0.095);
+        bp.Q.value = 1.1;
+
+        const pGain = this.ctx.createGain();
+        pGain.gain.setValueAtTime(0.001, now);
+        pGain.gain.linearRampToValueAtTime(0.42, now + 0.006);
+        pGain.gain.exponentialRampToValueAtTime(0.001, now + 0.11);
+
+        puff.connect(bp);
+        bp.connect(pGain);
+        pGain.connect(this.master);
+        puff.start(now);
+        puff.stop(now + 0.12);
+
+        // 3. Subtle shoulder stock thump
+        const thump = this.ctx.createOscillator();
+        const tGain = this.ctx.createGain();
+        thump.type = 'sine';
+        thump.frequency.setValueAtTime(135, now);
+        thump.frequency.exponentialRampToValueAtTime(42, now + 0.075);
+        tGain.gain.setValueAtTime(0.28, now);
+        tGain.gain.exponentialRampToValueAtTime(0.001, now + 0.085);
+        thump.connect(tGain);
+        tGain.connect(this.master);
+        thump.start(now);
+        thump.stop(now + 0.09);
+      }
+
+      /** Material-specific delayed impact audio */
+      playImpact(materialType, panX = 0, isHeadshot = false) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+        if (panner) {
+          panner.pan.value = Math.max(-0.85, Math.min(0.85, panX / 8));
+          panner.connect(this.master);
+        }
+        const out = panner || this.master;
+
+        if (materialType === 'rat') {
+          // Authentic airgun soft organic thwack/pop
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(isHeadshot ? 310 : 210, now);
+          osc.frequency.exponentialRampToValueAtTime(55, now + 0.065);
+          g.gain.setValueAtTime(isHeadshot ? 0.52 : 0.42, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.075);
+          osc.connect(g); g.connect(out);
+          osc.start(now); osc.stop(now + 0.08);
+
+          const snap = this.ctx.createBufferSource();
+          snap.buffer = this.noiseBuf;
+          const lp = this.ctx.createBiquadFilter();
+          lp.type = 'bandpass';
+          lp.frequency.value = isHeadshot ? 1950 : 1200;
+          const sg = this.ctx.createGain();
+          sg.gain.setValueAtTime(0.35, now);
+          sg.gain.exponentialRampToValueAtTime(0.001, now + 0.045);
+          snap.connect(lp); lp.connect(sg); sg.connect(out);
+          snap.start(now); snap.stop(now + 0.05);
+        } else if (materialType === 'concrete') {
+          // Sharp crack + brief ricochet whine
+          const crack = this.ctx.createBufferSource();
+          crack.buffer = this.noiseBuf;
+          const hp = this.ctx.createBiquadFilter();
+          hp.type = 'highpass';
+          hp.frequency.value = 1800;
+          const cg = this.ctx.createGain();
+          cg.gain.setValueAtTime(0.45, now);
+          cg.gain.exponentialRampToValueAtTime(0.001, now + 0.06);
+          crack.connect(hp); hp.connect(cg); cg.connect(out);
+          crack.start(now); crack.stop(now + 0.065);
+
+          if (Math.random() < 0.55) {
+            const ric = this.ctx.createOscillator();
+            const rg = this.ctx.createGain();
+            ric.type = 'sine';
+            ric.frequency.setValueAtTime(2800 + Math.random() * 900, now + 0.01);
+            ric.frequency.exponentialRampToValueAtTime(1100, now + 0.16);
+            rg.gain.setValueAtTime(0.09, now + 0.01);
+            rg.gain.exponentialRampToValueAtTime(0.001, now + 0.17);
+            ric.connect(rg); rg.connect(out);
+            ric.start(now + 0.01); ric.stop(now + 0.18);
+          }
+        } else if (materialType === 'metal') {
+          // Hollow metallic clank on tilted trough or metal tub
+          const freqs = [520, 890, 1460];
+          freqs.forEach((f, idx) => {
+            const osc = this.ctx.createOscillator();
+            const g = this.ctx.createGain();
+            osc.type = idx === 0 ? 'triangle' : 'sine';
+            osc.frequency.setValueAtTime(f * (0.94 + Math.random() * 0.12), now);
+            g.gain.setValueAtTime(0.22 / (idx + 1), now);
+            g.gain.exponentialRampToValueAtTime(0.001, now + 0.24 - idx * 0.05);
+            osc.connect(g); g.connect(out);
+            osc.start(now); osc.stop(now + 0.26);
+          });
+        } else if (materialType === 'plastic') {
+          // Hollow resonant thump on foreground feed jug
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'sine';
+          osc.frequency.setValueAtTime(260, now);
+          osc.frequency.exponentialRampToValueAtTime(115, now + 0.11);
+          g.gain.setValueAtTime(0.42, now);
+          g.gain.exponentialRampToValueAtTime(0.001, now + 0.13);
+          osc.connect(g); g.connect(out);
+          osc.start(now); osc.stop(now + 0.14);
+        } else {
+          // Dirt / timber dull earthen thud
+          const thud = this.ctx.createBufferSource();
+          thud.buffer = this.noiseBuf;
+          const lp = this.ctx.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.value = 520;
+          const tg = this.ctx.createGain();
+          tg.gain.setValueAtTime(0.36, now);
+          tg.gain.exponentialRampToValueAtTime(0.001, now + 0.09);
+          thud.connect(lp); lp.connect(tg); tg.connect(out);
+          thud.start(now); thud.stop(now + 0.1);
+        }
+      }
+
+      playReload() {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const times = [0.05, 0.36, 0.85, 1.32];
+        const freqs = [920, 680, 1240, 1520];
+        times.forEach((dt, i) => {
+          const osc = this.ctx.createOscillator();
+          const g = this.ctx.createGain();
+          osc.type = 'square';
+          osc.frequency.setValueAtTime(freqs[i], now + dt);
+          osc.frequency.exponentialRampToValueAtTime(freqs[i] * 0.45, now + dt + 0.03);
+          g.gain.setValueAtTime(0.09, now + dt);
+          g.gain.exponentialRampToValueAtTime(0.001, now + dt + 0.04);
+          osc.connect(g); g.connect(this.master);
+          osc.start(now + dt); osc.stop(now + dt + 0.045);
+        });
+      }
+
+      playClick(pitch = 1100) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(pitch, now);
+        osc.frequency.exponentialRampToValueAtTime(pitch * 0.5, now + 0.025);
+        g.gain.setValueAtTime(0.11, now);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.03);
+        osc.connect(g); g.connect(this.master);
+        osc.start(now); osc.stop(now + 0.035);
+      }
+
+      playBreath(inhale = true) {
+        if (!this.ctx || !this.noiseBuf) return;
+        const now = this.ctx.currentTime;
+        const src = this.ctx.createBufferSource();
+        src.buffer = this.noiseBuf;
+        const bp = this.ctx.createBiquadFilter();
+        bp.type = 'bandpass';
+        bp.frequency.setValueAtTime(inhale ? 620 : 480, now);
+        bp.Q.value = 1.6;
+        const g = this.ctx.createGain();
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.linearRampToValueAtTime(0.07, now + 0.14);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.42);
+        src.connect(bp); bp.connect(g); g.connect(this.master);
+        src.start(now); src.stop(now + 0.45);
+      }
+
+      playDistantRatSqueak(panX = 0) {
+        if (!this.ctx) return;
+        const now = this.ctx.currentTime;
+        const panner = this.ctx.createStereoPanner ? this.ctx.createStereoPanner() : null;
+        if (panner) {
+          panner.pan.value = Math.max(-0.85, Math.min(0.85, panX / 8));
+          panner.connect(this.master);
+        }
+        const out = panner || this.master;
+
+        const osc = this.ctx.createOscillator();
+        const g = this.ctx.createGain();
+        osc.type = 'sine';
+        const base = 3600 + Math.random() * 1400;
+        osc.frequency.setValueAtTime(base, now);
+        osc.frequency.exponentialRampToValueAtTime(base * 1.25, now + 0.035);
+        osc.frequency.exponentialRampToValueAtTime(base * 0.82, now + 0.085);
+        g.gain.setValueAtTime(0.001, now);
+        g.gain.linearRampToValueAtTime(0.028, now + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.001, now + 0.095);
+        osc.connect(g); g.connect(out);
+        osc.start(now); osc.stop(now + 0.1);
+      }
+    }
+
+    const audio = new SoundEngine();
+
+    // =========================================================================
+    // 4. TERRAIN HEIGHTFIELD FUNCTION (Shared by Floor Mesh, Props & Rat AI)
+    // =========================================================================
+    function smoothstep(edge0, edge1, x) {
+      const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+      return t * t * (3 - 2 * t);
+    }
+
+    /**
+     * Exact barn floor elevation at world (x, z).
+     * Zone 1 (Left x < -2.3): Undulating dirt, mounds around posts, shallow pit.
+     * Zone 2 (Center -2.3..2.5): Banked dirt mounds against back wall & trough.
+     * Zone 3 (Right x > 2.5): Elevated cracked concrete slab with deep foreground horizontal fissure.
+     */
+    function getFloorHeight(x, z) {
+      // Base gentle natural dirt undulation
+      let y = Math.sin(x * 0.82 + 0.4) * 0.045
+            + Math.cos(z * 1.15 - 0.3) * 0.04
+            + Math.sin((x + z) * 2.1) * 0.022
+            + Math.cos((x * 1.7 - z * 2.3)) * 0.016;
+
+      // Banked-up dirt rising toward back wall (z from 0.2 to -1.7)
+      const wallBank = smoothstep(0.6, -1.65, z);
+      const bankStrength = x < 2.6 ? 0.34 : 0.16;
+      y += wallBank * bankStrength * (0.78 + 0.22 * Math.sin(x * 1.9));
+
+      // Zone 1: Dirt mounds anchored around the two vertical barn support posts
+      const dPost1 = Math.hypot(x - (-5.55), z - (-0.65));
+      const dPost2 = Math.hypot(x - (-3.65), z - (-0.65));
+      y += Math.exp(-dPost1 * dPost1 * 1.35) * 0.20;
+      y += Math.exp(-dPost2 * dPost2 * 1.25) * 0.22;
+
+      // Zone 1: Shallow dark dirt depression/pit in foreground
+      const dPit = Math.hypot((x - (-4.35)) * 0.9, (z - 1.05) * 1.3);
+      y -= Math.exp(-dPit * dPit * 2.8) * 0.14;
+
+      // Zone 2: Mound ridge supporting the tilted feeding trough
+      const dTroughMound = Math.hypot((x - 0.15) * 0.72, (z - (-0.68)) * 1.1);
+      y += Math.exp(-dTroughMound * dTroughMound * 1.4) * 0.22;
+
+      // Zone 2: Small foreground dirt hummocks
+      const dHum1 = Math.hypot(x - (-0.95), z - 0.75);
+      y += Math.exp(-dHum1 * dHum1 * 2.2) * 0.10;
+
+      // Zone 3: Flatter concrete slab transition (x > 2.35)
+      const slabMask = smoothstep(2.05, 2.95, x);
+      const concreteBase = 0.14 + Math.sin(x * 0.6) * 0.015 + wallBank * 0.08;
+      y = y * (1 - slabMask) + concreteBase * slabMask;
+
+      // Zone 3: Prominent jagged horizontal foreground crack running across the concrete slab
+      if (x > 1.9) {
+        const crackZ = 1.08 + Math.sin(x * 1.25) * 0.14 + Math.cos(x * 3.4) * 0.055;
+        const distCrack = Math.abs(z - crackZ);
+        const crackWidth = 0.075 + 0.025 * Math.sin(x * 5.7);
+        if (distCrack < crackWidth * 2.2) {
+          const crackDepth = Math.exp(-(distCrack * distCrack) / (crackWidth * crackWidth * 0.48));
+          y -= crackDepth * 0.28 * slabMask;
+        }
+        // Secondary fine branching fissure near back wall seam
+        const seamZ = -0.78 + Math.sin(x * 2.1) * 0.06;
+        const dSeam = Math.abs(z - seamZ);
+        if (dSeam < 0.18) {
+          y -= Math.exp(-(dSeam * dSeam) / 0.004) * 0.11 * slabMask;
+        }
+      }
+
+      return y;
+    }
+
+    // =========================================================================
+    // 5. THREE.JS RENDERER, SCENE, COAXIAL IR LIGHTING & CUSTOM GLSL PIPELINE
+    // =========================================================================
+    let renderer, scene, camera;
+    let irSpotMain, irSpotFill, ambientLight;
+    let sceneRT, prevRT, currRT;
+    let postScenePersist, postSceneFinal, postCamera;
+    let persistMat, finalMat;
+    let pbr;
+
+    // Collidable environment meshes for raycasting & ballistics
+    const envHitMeshes = [];
+    // Active rats, projectiles, dust plumes
+    const rats = [];
+    const ratHitMeshes = [];
+    const projectiles = [];
+    const dustParticles = [];
+
+    const raycaster = new THREE.Raycaster();
+    const centerNDC = new THREE.Vector2(0, 0);
+
+    function initRendererAndPostProcessing() {
+      renderer = new THREE.WebGLRenderer({
+        antialias: true,
+        powerPreference: 'high-performance',
+        stencil: false
+      });
+      renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+      renderer.setSize(window.innerWidth, window.innerHeight);
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
+      renderer.shadowMap.enabled = true;
+      renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.08;
+      dom.container.appendChild(renderer.domElement);
+
+      scene = new THREE.Scene();
+      scene.background = new THREE.Color(0x050505);
+      // Subtle barn dust atmospheric depth fog for authentic IR distance falloff
+      scene.fog = new THREE.FogExp2(0x0a0b0b, 0.036);
+
+      camera = new THREE.PerspectiveCamera(
+        CONFIG.zoomLevels[0].fov,
+        window.innerWidth / window.innerHeight,
+        0.1,
+        45
+      );
+      camera.position.copy(CONFIG.camPos);
+      camera.rotation.order = 'YXZ';
+      scene.add(camera);
+
+      // Coaxial 850nm IR Illuminator SpotLight mounted directly on the rifle scope
+      ambientLight = new THREE.AmbientLight(0xd8dcd8, CONFIG.irLevels[state.irIndex].ambient);
+      scene.add(ambientLight);
+
+      irSpotMain = new THREE.SpotLight(
+        0xf5f8f5,
+        CONFIG.irLevels[state.irIndex].main,
+        24,
+        Math.PI / 4.6,
+        0.64,
+        1.55
+      );
+      // Slight offset above optical axis like a real scope-rail IR torch
+      irSpotMain.position.set(0.06, 0.14, 0.0);
+      irSpotMain.castShadow = true;
+      irSpotMain.shadow.mapSize.set(2048, 2048);
+      irSpotMain.shadow.camera.near = 1.2;
+      irSpotMain.shadow.camera.far = 20;
+      irSpotMain.shadow.bias = -0.0005;
+      irSpotMain.shadow.normalBias = 0.022;
+      irSpotMain.target.position.set(0, 0, -10);
+      camera.add(irSpotMain);
+      camera.add(irSpotMain.target);
+
+      // Wide coaxial IR bounce/spill fill light (no shadow cost, prevents crushed unlit edges)
+      irSpotFill = new THREE.SpotLight(
+        0xdce0dc,
+        CONFIG.irLevels[state.irIndex].fill,
+        22,
+        Math.PI / 2.2,
+        0.88,
+        1.4
+      );
+      irSpotFill.position.set(0, 0.05, 0);
+      irSpotFill.target.position.set(0, 0, -10);
+      camera.add(irSpotFill);
+      camera.add(irSpotFill.target);
+
+      // --- RenderTargets for Custom GLSL IR Night-Vision & Temporal Persistence ---
+      const w = Math.max(1, Math.floor(window.innerWidth * renderer.getPixelRatio()));
+      const h = Math.max(1, Math.floor(window.innerHeight * renderer.getPixelRatio()));
+      const rtOpts = {
+        minFilter: THREE.LinearFilter,
+        magFilter: THREE.LinearFilter,
+        format: THREE.RGBAFormat,
+        type: THREE.UnsignedByteType,
+        depthBuffer: true
+      };
+      sceneRT = new THREE.WebGLRenderTarget(w, h, rtOpts);
+      prevRT  = new THREE.WebGLRenderTarget(w, h, { ...rtOpts, depthBuffer: false });
+      currRT  = new THREE.WebGLRenderTarget(w, h, { ...rtOpts, depthBuffer: false });
+
+      postCamera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
+      const quadGeo = new THREE.PlaneGeometry(2, 2);
+
+      // PASS 1: Temporal IR Frame Persistence Shader (authentic CMOS highlight trails on moving eyeshine)
+      persistMat = new THREE.ShaderMaterial({
+        uniforms: {
+          tCurrent: { value: sceneRT.texture },
+          tPrev: { value: prevRT.texture },
+          uBaseDecay: { value: 0.22 },
+          uHighlightDecay: { value: 0.56 }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = vec4(position.xy, 0.0, 1.0);
+          }
+        `,
+        fragmentShader: `
+          precision highp float;
+          varying vec2 vUv;
+          uniform sampler2D tCurrent;
+          uniform sampler2D tPrev;
+          uniform float uBaseDecay;
+          uniform float uHighlightDecay;
+
+          void main() {
+            vec3 cur = texture2D(tCurrent, vUv).rgb;
+            vec3 prv = texture2D(tPrev, vUv).rgb;
+
+            float curL = dot(cur, vec3(0.30, 0.59, 0.11));
+            float prvL = dot(prv, vec3(0.30, 0.59, 0.11));
+
+            // Bright IR eyeshine & pellet streaks persist longer across frames when panning
+            float brightMask = smoothstep(0.76, 0.96, prvL);
+            float decay = mix(uBaseDecay, uHighlightDecay, brightMask);
+
+            // Preserve sharp leading edge of new bright objects while trailing old bright streaks
+            vec3 blended = mix(cur, max(cur, prv * 0.96), decay);
+            gl_FragColor = vec4(blended, 1.0);
+          }
+        `
+      });
+      postScenePersist = new THREE.Scene();
+      postScenePersist.add(new THREE.Mesh(quadGeo, persistMat));
+
+      // PASS 2: Final Digital IR Monochrome Sensor Optics Shader
+      finalMat = new THREE.ShaderMaterial({
+        uniforms: {
+          tDiffuse: { value: currRT.texture },
+          uTime: { value: 0 },
+          uResolution: { value: new THREE.Vector2(w, h) },
+          uDigitalSoftness: { value: 0.0 },
+          uShakeOffset: { value: new THREE.Vector2(0, 0) }
+        },
+        vertexShader: `
+          varying vec2 vUv;
+          void main() {
+            vUv = uv;
+            gl_Position = vec4(position.xy, 0.0, 1.0);
+          }
+        `,
+        fragmentShader: `
+          precision highp float;
+          varying vec2 vUv;
+          uniform sampler2D tDiffuse;
+          uniform float uTime;
+          uniform vec2 uResolution;
+          uniform float uDigitalSoftness;
+          uniform vec2 uShakeOffset;
+
+          float hash12(vec2 p) {
+            vec3 p3 = fract(vec3(p.xyx) * 0.1031);
+            p3 += dot(p3, p3.yzx + 33.33);
+            return fract((p3.x + p3.y) * p3.z);
+          }
+
+          void main() {
+            vec2 uv = clamp(vUv + uShakeOffset, 0.001, 0.999);
+            vec2 centered = uv - 0.5;
+            float distSq = dot(centered, centered);
+            float dist = sqrt(distSq);
+
+            // Optical edge softness + digital zoom sensor interpolation softness
+            vec2 texel = 1.0 / uResolution;
+            float blurRad = (0.45 + dist * 2.35 + uDigitalSoftness * 1.45);
+            vec3 c0 = texture2D(tDiffuse, uv).rgb;
+            vec3 c1 = texture2D(tDiffuse, uv + vec2( texel.x,  texel.y) * blurRad).rgb;
+            vec3 c2 = texture2D(tDiffuse, uv + vec2(-texel.x,  texel.y) * blurRad).rgb;
+            vec3 c3 = texture2D(tDiffuse, uv + vec2( texel.x, -texel.y) * blurRad).rgb;
+            vec3 c4 = texture2D(tDiffuse, uv + vec2(-texel.x, -texel.y) * blurRad).rgb;
+
+            float blurMix = clamp(dist * 0.42 + uDigitalSoftness * 0.34, 0.0, 0.65);
+            vec3 col = mix(c0, (c0 * 2.0 + c1 + c2 + c3 + c4) / 6.0, blurMix);
+
+            // Subtle IR sensor bloom on blazing pure-white eyeshine & pellet streaks
+            vec3 bloomTap = (
+              texture2D(tDiffuse, uv + vec2( texel.x * 3.0, 0.0)).rgb +
+              texture2D(tDiffuse, uv + vec2(-texel.x * 3.0, 0.0)).rgb +
+              texture2D(tDiffuse, uv + vec2(0.0,  texel.y * 3.0)).rgb +
+              texture2D(tDiffuse, uv + vec2(0.0, -texel.y * 3.0)).rgb
+            ) * 0.25;
+            float bloomLum = dot(bloomTap, vec3(0.30, 0.59, 0.11));
+            float eyeBloom = smoothstep(0.84, 1.0, bloomLum) * 0.28;
+
+            // True monochrome 850nm IR luminance conversion
+            float lum = dot(col, vec3(0.34, 0.54, 0.12)) + eyeBloom;
+
+            // High-contrast digital IR S-curve (lifted mid-grays, deep crushed crevices, pure white highlights)
+            lum = clamp(lum, 0.0, 1.0);
+            float curved = pow(lum, 0.94);
+            curved = smoothstep(0.02, 0.97, curved);
+            curved = mix(lum, curved, 0.52);
+
+            // Fine animated CMOS sensor grain (slightly heavier in darker shadow tones like real IR cameras)
+            float grainA = hash12(floor(gl_FragCoord.xy) + fract(uTime * 19.37) * 512.0) - 0.5;
+            float grainB = hash12(floor(gl_FragCoord.xy * 0.5) + fract(uTime * 11.73) * 311.0) - 0.5;
+            float grainStrength = mix(0.062, 0.022, curved) * (1.0 + uDigitalSoftness * 0.28);
+            curved += (grainA * 0.72 + grainB * 0.28) * grainStrength;
+
+            // Subtle optical scope vignette (darker corners without hard circular cutout, matching raw IR recording)
+            float vig = 1.0 - smoothstep(0.32, 0.86, dist) * 0.36;
+            curved *= vig;
+
+            // Faint subtle horizontal CMOS micro-banding
+            float scan = sin(gl_FragCoord.y * 1.5 + uTime * 4.0) * 0.004;
+            curved = clamp(curved + scan, 0.0, 1.0);
+
+            // Authentic silver-gray digital IR palette (NOT neon-green NVG)
+            vec3 irSilver = vec3(0.955, 0.972, 0.958) * curved;
+            gl_FragColor = vec4(irSilver, 1.0);
+          }
+        `
+      });
+      postSceneFinal = new THREE.Scene();
+      postSceneFinal.add(new THREE.Mesh(quadGeo, finalMat));
+    }
+
+    // =========================================================================
+    // 6. EXACT 3-ZONE BARN ENVIRONMENT BUILDER
+    // =========================================================================
+    function tagEnvMesh(mesh, hitMaterial) {
+      mesh.userData.hitMaterial = hitMaterial;
+      envHitMeshes.push(mesh);
+      return mesh;
+    }
+
+    function buildBarnEnvironment() {
+      // --- Shared PBR Materials ---
+      const dirtMat = new THREE.MeshStandardMaterial({
+        map: pbr.dirt.map,
+        normalMap: pbr.dirt.normalMap,
+        normalScale: new THREE.Vector2(1.35, 1.35),
+        roughnessMap: pbr.dirt.roughnessMap,
+        bumpMap: pbr.dirt.bumpMap,
+        bumpScale: 0.04,
+        roughness: 0.95,
+        metalness: 0.02
+      });
+
+      const concreteFloorMat = new THREE.MeshStandardMaterial({
+        map: pbr.concreteFloor.map,
+        normalMap: pbr.concreteFloor.normalMap,
+        normalScale: new THREE.Vector2(1.15, 1.15),
+        roughnessMap: pbr.concreteFloor.roughnessMap,
+        roughness: 0.88,
+        metalness: 0.04
+      });
+
+      const barnWallMat = new THREE.MeshStandardMaterial({
+        map: pbr.barnWall.map,
+        normalMap: pbr.barnWall.normalMap,
+        normalScale: new THREE.Vector2(1.25, 1.25),
+        roughnessMap: pbr.barnWall.roughnessMap,
+        roughness: 0.91,
+        metalness: 0.03
+      });
+
+      const metalTroughMat = new THREE.MeshStandardMaterial({
+        map: pbr.metalTrough.map,
+        normalMap: pbr.metalTrough.normalMap,
+        normalScale: new THREE.Vector2(1.2, 1.2),
+        roughnessMap: pbr.metalTrough.roughnessMap,
+        roughness: 0.62,
+        metalness: 0.38
+      });
+
+      const postMat = new THREE.MeshStandardMaterial({
+        map: pbr.post.map,
+        normalMap: pbr.post.normalMap,
+        normalScale: new THREE.Vector2(1.1, 1.1),
+        roughnessMap: pbr.post.roughnessMap,
+        roughness: 0.78,
+        metalness: 0.14
+      });
+
+      const darkCavityMat = new THREE.MeshStandardMaterial({
+        color: 0x060606,
+        roughness: 1.0,
+        metalness: 0.0
+      });
+
+      // --- 1. CONTINUOUS SCULPTED BARN FLOOR (Dirt Left/Center + Cracked Concrete Right) ---
+      // Left & Center Dirt Floor (-9.5 to +2.85)
+      {
+        const geo = new THREE.PlaneGeometry(12.6, 11.5, 130, 96);
+        geo.rotateX(-Math.PI / 2);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i) - 3.2;
+          const z = pos.getZ(i) + 2.4;
+          pos.setXYZ(i, x, getFloorHeight(x, z), z);
+        }
+        geo.computeVertexNormals();
+        const floorDirt = new THREE.Mesh(geo, dirtMat);
+        floorDirt.receiveShadow = true;
+        floorDirt.castShadow = true;
+        scene.add(tagEnvMesh(floorDirt, 'dirt'));
+      }
+
+      // Right Zone Cracked Concrete Floor Slab (+2.3 to +9.8) with 3D sculpted foreground fissure
+      {
+        const geo = new THREE.PlaneGeometry(7.8, 11.5, 96, 96);
+        geo.rotateX(-Math.PI / 2);
+        const pos = geo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+          const x = pos.getX(i) + 6.05;
+          const z = pos.getZ(i) + 2.4;
+          pos.setXYZ(i, x, getFloorHeight(x, z), z);
+        }
+        geo.computeVertexNormals();
+        const floorConcrete = new THREE.Mesh(geo, concreteFloorMat);
+        floorConcrete.receiveShadow = true;
+        floorConcrete.castShadow = true;
+        scene.add(tagEnvMesh(floorConcrete, 'concrete'));
+
+        // Dark interior fissure liner right inside the foreground concrete crack so it reads pitch-black in IR
+        const crackPoints = [];
+        for (let i = 0; i <= 32; i++) {
+          const x = 2.45 + (i / 32) * 6.8;
+          const z = 1.08 + Math.sin(x * 1.25) * 0.14 + Math.cos(x * 3.4) * 0.055;
+          crackPoints.push(new THREE.Vector3(x, getFloorHeight(x, z) + 0.025, z));
+        }
+        const crackCurve = new THREE.CatmullRomCurve3(crackPoints);
+        const crackTube = new THREE.Mesh(
+          new THREE.TubeGeometry(crackCurve, 48, 0.038, 6, false),
+          darkCavityMat
+        );
+        scene.add(crackTube);
+      }
+
+      // --- 2. BACK BARN WALLS ACROSS ALL 3 ZONES ---
+      // Zone 1 Back Wall: Recessed dark opening underneath wooden barn slats/framing (-8.8 to -2.2)
+      {
+        // Deep dark recessed bay behind the opening
+        const darkBack = new THREE.Mesh(new THREE.BoxGeometry(6.8, 3.2, 0.2), darkCavityMat);
+        darkBack.position.set(-5.5, 1.35, -2.55);
+        scene.add(darkBack);
+
+        // Upper barn framing wall above recessed feed opening (leaving a 0.65m dark horizontal opening at base)
+        const upperFeedWall = new THREE.Mesh(new THREE.BoxGeometry(6.6, 2.7, 0.25), barnWallMat);
+        upperFeedWall.position.set(-5.5, 2.42, -1.52);
+        upperFeedWall.castShadow = true;
+        upperFeedWall.receiveShadow = true;
+        scene.add(tagEnvMesh(upperFeedWall, 'concrete'));
+
+        // Horizontal wooden barn slats / beam across top of opening (visible in 00:05-00:19)
+        const beam1 = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.22, 0.28), postMat);
+        beam1.position.set(-5.5, 1.15, -1.38);
+        beam1.castShadow = true;
+        beam1.receiveShadow = true;
+        scene.add(tagEnvMesh(beam1, 'dirt'));
+
+        const beam2 = new THREE.Mesh(new THREE.BoxGeometry(6.6, 0.16, 0.22), postMat);
+        beam2.position.set(-5.5, 1.56, -1.36);
+        beam2.castShadow = true;
+        beam2.receiveShadow = true;
+        scene.add(tagEnvMesh(beam2, 'dirt'));
+
+        // Rough concrete corner partition wall on far left (00:12-00:19)
+        const leftCorner = new THREE.Mesh(new THREE.BoxGeometry(1.4, 3.6, 2.2), barnWallMat);
+        leftCorner.position.set(-7.35, 1.65, -0.75);
+        leftCorner.castShadow = true;
+        leftCorner.receiveShadow = true;
+        scene.add(tagEnvMesh(leftCorner, 'concrete'));
+      }
+
+      // Zone 2 & 3 Main Concrete Block Back Wall (-2.25 to +9.6)
+      {
+        const mainWall = new THREE.Mesh(new THREE.BoxGeometry(12.2, 3.8, 0.45), barnWallMat);
+        mainWall.position.set(3.75, 1.98, -1.28);
+        mainWall.castShadow = true;
+        mainWall.receiveShadow = true;
+        scene.add(tagEnvMesh(mainWall, 'concrete'));
+
+        // Raised concrete wall footing/ledge with broken masonry gaps (Zone 3 burrows 00:45-00:51)
+        const leftLedge = new THREE.Mesh(new THREE.BoxGeometry(4.9, 0.55, 0.24), barnWallMat);
+        leftLedge.position.set(0.25, 0.45, -1.04);
+        leftLedge.castShadow = true;
+        leftLedge.receiveShadow = true;
+        scene.add(tagEnvMesh(leftLedge, 'concrete'));
+
+        // Masonry piers on Zone 3 creating deep dark burrow crevices between them
+        const pierSpecs = [
+          { x: 3.15, w: 0.95, h: 0.48 },
+          { x: 4.55, w: 0.85, h: 0.44 },
+          { x: 5.95, w: 0.90, h: 0.46 },
+          { x: 7.75, w: 1.60, h: 0.52 }
+        ];
+        pierSpecs.forEach(p => {
+          const pier = new THREE.Mesh(new THREE.BoxGeometry(p.w, p.h, 0.24), barnWallMat);
+          pier.position.set(p.x, getFloorHeight(p.x, -0.95) + p.h * 0.5 - 0.03, -1.0);
+          pier.castShadow = true;
+          pier.receiveShadow = true;
+          scene.add(tagEnvMesh(pier, 'concrete'));
+        });
+
+        // Pitch-black recessed burrow cavities right along Zone 3 wall base
+        const burrowXs = [3.86, 5.25, 6.62];
+        burrowXs.forEach(bx => {
+          const hole = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.34, 0.16), darkCavityMat);
+          hole.position.set(bx, getFloorHeight(bx, -0.98) + 0.14, -1.02);
+          scene.add(hole);
+        });
+
+        // Dark continuous horizontal wall-base crevice shadow strip along Zone 3
+        const wallCrevice = new THREE.Mesh(new THREE.BoxGeometry(5.6, 0.12, 0.12), darkCavityMat);
+        wallCrevice.position.set(5.2, 0.22, -1.02);
+        scene.add(wallCrevice);
+      }
+
+      // --- 3. ZONE 1 SPECIFIC PROPS: Support Posts, Hanging Cable, Plastic Chemical/Feed Jug ---
+      {
+        // Two vertical cylindrical barn support posts/pipes anchored into dirt mounds
+        [-5.55, -3.65].forEach((px, idx) => {
+          const r = idx === 0 ? 0.115 : 0.125;
+          const post = new THREE.Mesh(new THREE.CylinderGeometry(r, r * 1.05, 3.6, 20), postMat);
+          post.position.set(px, 1.75, -0.65);
+          post.castShadow = true;
+          post.receiveShadow = true;
+          scene.add(tagEnvMesh(post, 'metal'));
+        });
+
+        // Hanging dark cable/wire curving gracefully near the right support post (00:05, 00:12, 00:18)
+        const cableCurve = new THREE.CatmullRomCurve3([
+          new THREE.Vector3(-4.2, 2.35, -1.15),
+          new THREE.Vector3(-3.85, 1.58, -1.02),
+          new THREE.Vector3(-3.35, 1.25, -0.95),
+          new THREE.Vector3(-2.75, 1.62, -1.08),
+          new THREE.Vector3(-2.4, 2.25, -1.2)
+        ]);
+        const cableMat = new THREE.MeshStandardMaterial({ color: 0x1b1c1b, roughness: 0.65 });
+        const cable = new THREE.Mesh(new THREE.TubeGeometry(cableCurve, 28, 0.014, 8, false), cableMat);
+        cable.castShadow = true;
+        scene.add(cable);
+
+        // Large weathered plastic chemical/feed jug lying horizontally in foreground dirt (00:07-00:10)
+        const jugGroup = new THREE.Group();
+        const jugMat = new THREE.MeshStandardMaterial({
+          map: pbr.plasticJug.map,
+          normalMap: pbr.plasticJug.normalMap,
+          roughnessMap: pbr.plasticJug.roughnessMap,
+          roughness: 0.56,
+          metalness: 0.04
+        });
+        const jugBody = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.28, 0.30), jugMat);
+        jugBody.castShadow = true;
+        jugBody.receiveShadow = true;
+        tagEnvMesh(jugBody, 'plastic');
+        jugGroup.add(jugBody);
+
+        // Tapered shoulder + neck + dark screw cap pointing left
+        const shoulder = new THREE.Mesh(new THREE.CylinderGeometry(0.065, 0.145, 0.12, 16), jugMat);
+        shoulder.rotation.z = Math.PI / 2;
+        shoulder.position.set(-0.32, 0.02, 0);
+        shoulder.castShadow = true;
+        tagEnvMesh(shoulder, 'plastic');
+        jugGroup.add(shoulder);
+
+        const capMat = new THREE.MeshStandardMaterial({ color: 0x1e1f1e, roughness: 0.52 });
+        const cap = new THREE.Mesh(new THREE.CylinderGeometry(0.052, 0.055, 0.065, 14), capMat);
+        cap.rotation.z = Math.PI / 2;
+        cap.position.set(-0.40, 0.02, 0);
+        cap.castShadow = true;
+        tagEnvMesh(cap, 'plastic');
+        jugGroup.add(cap);
+
+        // Molded jug handle
+        const handle = new THREE.Mesh(new THREE.TorusGeometry(0.085, 0.022, 8, 16, Math.PI), jugMat);
+        handle.position.set(-0.18, 0.14, 0);
+        handle.rotation.z = 0.25;
+        jugGroup.add(handle);
+
+        const jx = -2.95, jz = 1.62;
+        jugGroup.position.set(jx, getFloorHeight(jx, jz) + 0.135, jz);
+        jugGroup.rotation.set(0.05, 0.16, -0.04);
+        scene.add(jugGroup);
+      }
+
+      // --- 4. ZONE 2 SPECIFIC PROPS: Tilted Half-Buried Metal/Concrete Feeding Trough & Burrow Cavity ---
+      {
+        const troughGroup = new THREE.Group();
+        const tW = 1.28, tH = 0.56, tD = 0.68, wallT = 0.065;
+
+        // Open-bottom hollow tilted trough box creating a genuine dark burrow cavity underneath (00:22-00:36)
+        const topPanel = new THREE.Mesh(new THREE.BoxGeometry(tW, wallT, tD), metalTroughMat);
+        topPanel.position.set(0, tH * 0.5, 0);
+        topPanel.castShadow = true;
+        topPanel.receiveShadow = true;
+        tagEnvMesh(topPanel, 'metal');
+        troughGroup.add(topPanel);
+
+        const frontPanel = new THREE.Mesh(new THREE.BoxGeometry(tW, tH, wallT), metalTroughMat);
+        frontPanel.position.set(0, 0, tD * 0.5);
+        frontPanel.castShadow = true;
+        frontPanel.receiveShadow = true;
+        tagEnvMesh(frontPanel, 'metal');
+        troughGroup.add(frontPanel);
+
+        const backPanel = new THREE.Mesh(new THREE.BoxGeometry(tW, tH, wallT), metalTroughMat);
+        backPanel.position.set(0, 0, -tD * 0.5);
+        backPanel.castShadow = true;
+        backPanel.receiveShadow = true;
+        tagEnvMesh(backPanel, 'metal');
+        troughGroup.add(backPanel);
+
+        // Right end side panel (leaving left/front underside dark cave opening for rats!)
+        const rightEnd = new THREE.Mesh(new THREE.BoxGeometry(wallT, tH, tD), metalTroughMat);
+        rightEnd.position.set(tW * 0.5, 0, 0);
+        rightEnd.castShadow = true;
+        rightEnd.receiveShadow = true;
+        tagEnvMesh(rightEnd, 'metal');
+        troughGroup.add(rightEnd);
+
+        // Deep dark shadow cavity liner inside the tilted trough
+        const cavity = new THREE.Mesh(new THREE.BoxGeometry(tW * 0.88, tH * 0.85, tD * 0.82), darkCavityMat);
+        cavity.position.set(-0.04, -0.04, 0);
+        troughGroup.add(cavity);
+
+        const tx = 0.22, tz = -0.32;
+        troughGroup.position.set(tx, getFloorHeight(tx, tz) + 0.25, tz);
+        // Leaning dramatically at an angle against the banked dirt mound just like 00:23-00:36
+        troughGroup.rotation.set(-0.14, -0.24, -0.28);
+        scene.add(troughGroup);
+      }
+
+      // --- 5. ZONE 3 SPECIFIC PROPS: Dirty Weathered Metal/Plastic Tub/Crate on Far Right (00:52-00:58) ---
+      {
+        const tubGroup = new THREE.Group();
+        const w = 1.15, h = 0.48, d = 0.72, th = 0.055;
+
+        const front = new THREE.Mesh(new THREE.BoxGeometry(w, h, th), metalTroughMat);
+        front.position.set(0, h * 0.5, d * 0.5);
+        const back = new THREE.Mesh(new THREE.BoxGeometry(w, h, th), metalTroughMat);
+        back.position.set(0, h * 0.5, -d * 0.5);
+        const left = new THREE.Mesh(new THREE.BoxGeometry(th, h, d), metalTroughMat);
+        left.position.set(-w * 0.5, h * 0.5, 0);
+        const right = new THREE.Mesh(new THREE.BoxGeometry(th, h, d), metalTroughMat);
+        right.position.set(w * 0.5, h * 0.5, 0);
+        const rim = new THREE.Mesh(new THREE.BoxGeometry(w + 0.06, 0.04, d + 0.06), metalTroughMat);
+        rim.position.set(0, h, 0);
+        const insideDark = new THREE.Mesh(new THREE.BoxGeometry(w - 0.12, h * 0.72, d - 0.12), darkCavityMat);
+        insideDark.position.set(0, h * 0.36, 0);
+
+        [front, back, left, right, rim].forEach(m => {
+          m.castShadow = true;
+          m.receiveShadow = true;
+          tagEnvMesh(m, 'metal');
+          tubGroup.add(m);
+        });
+        tubGroup.add(insideDark);
+
+        const rx = 6.95, rz = -0.35;
+        tubGroup.position.set(rx, getFloorHeight(rx, rz) - 0.02, rz);
+        tubGroup.rotation.y = -0.18;
+        scene.add(tubGroup);
+      }
+
+      // --- 6. SCATTERED PEBBLES, DIRT CLODS, ROCKS & FEED CLUMPS (InstancedMesh for 60fps) ---
+      {
+        const rockGeo = new THREE.DodecahedronGeometry(0.06, 1);
+        // Slightly flatten & organicize vertices
+        const rp = rockGeo.attributes.position;
+        for (let i = 0; i < rp.count; i++) {
+          const vx = rp.getX(i), vy = rp.getY(i), vz = rp.getZ(i);
+          const jitter = 0.78 + 0.38 * Math.sin(vx * 29 + vy * 17 + vz * 23);
+          rp.setXYZ(i, vx * jitter * 1.15, vy * jitter * 0.65, vz * jitter);
+        }
+        rockGeo.computeVertexNormals();
+
+        const count = 260;
+        const pebbles = new THREE.InstancedMesh(rockGeo, dirtMat, count);
+        pebbles.castShadow = true;
+        pebbles.receiveShadow = true;
+
+        const dummy = new THREE.Object3D();
+        let seed = 91823;
+        const rand = () => {
+          seed = (seed * 1664525 + 1013904223) >>> 0;
+          return seed / 4294967296;
+        };
+
+        for (let i = 0; i < count; i++) {
+          const px = -7.6 + rand() * 15.6;
+          const pz = -1.1 + rand() * 4.4;
+          const py = getFloorHeight(px, pz);
+          const scale = (px > 2.6 ? 0.45 : 0.7) * (0.45 + Math.pow(rand(), 1.8) * 2.2);
+          dummy.position.set(px, py + scale * 0.016, pz);
+          dummy.rotation.set(rand() * Math.PI, rand() * Math.PI, rand() * Math.PI);
+          dummy.scale.set(scale * (0.8 + rand() * 0.6), scale * (0.5 + rand() * 0.6), scale * (0.8 + rand() * 0.6));
+          dummy.updateMatrix();
+          pebbles.setMatrixAt(i, dummy.matrix);
+        }
+        pebbles.instanceMatrix.needsUpdate = true;
+        scene.add(pebbles);
+      }
+
+      // --- 7. OVERHEAD BARN ROOF / SIDE WALLS (Encloses ambient reflections cleanly) ---
+      const roof = new THREE.Mesh(new THREE.PlaneGeometry(24, 16), darkCavityMat);
+      roof.rotation.x = Math.PI / 2;
+      roof.position.set(0, 4.1, 2.5);
+      scene.add(roof);
+    }
+
+    // =========================================================================
+    // 7. HYPER-REALISTIC 3D RAT RIG, TAPETUM LUCIDUM EYESHINE & NATURAL PEST AI
+    // =========================================================================
+    const ZONES = [
+      // Zone 1: Left Feed Bay & Posts
+      {
+        id: 0,
+        burrows: [
+          new THREE.Vector3(-6.35, 0, -1.35),
+          new THREE.Vector3(-4.65, 0, -1.38),
+          new THREE.Vector3(-2.75, 0, -1.35)
+        ],
+        waypoints: [
+          new THREE.Vector3(-6.0, 0, -0.35),
+          new THREE.Vector3(-5.1, 0,  0.45),
+          new THREE.Vector3(-4.2, 0, -0.45),
+          new THREE.Vector3(-3.3, 0,  0.35),
+          new THREE.Vector3(-4.6, 0,  1.25),
+          new THREE.Vector3(-3.6, 0,  1.05),
+          new THREE.Vector3(-2.5, 0,  0.25)
+        ]
+      },
+      // Zone 2: Center Tilted Trough & Dirt Mounds
+      {
+        id: 1,
+        burrows: [
+          new THREE.Vector3(-0.18, 0, -0.35), // Directly inside dark cavity under tilted trough!
+          new THREE.Vector3( 0.05, 0, -0.25), // Under tilted trough opening
+          new THREE.Vector3(-1.65, 0, -0.92),
+          new THREE.Vector3( 1.55, 0, -0.92)
+        ],
+        waypoints: [
+          new THREE.Vector3(-1.35, 0,  0.12),
+          new THREE.Vector3(-0.65, 0,  0.42),
+          new THREE.Vector3( 0.15, 0,  0.65),
+          new THREE.Vector3( 0.95, 0,  0.38),
+          new THREE.Vector3( 1.65, 0,  0.08),
+          new THREE.Vector3(-0.85, 0, -0.52),
+          new THREE.Vector3( 1.18, 0, -0.48),
+          new THREE.Vector3(-0.15, 0,  1.25)
+        ]
+      },
+      // Zone 3: Right Cracked Concrete Slab & Masonry Burrows
+      {
+        id: 2,
+        burrows: [
+          new THREE.Vector3(3.86, 0, -0.95),  // Masonry burrow hole #1
+          new THREE.Vector3(5.25, 0, -0.95),  // Masonry burrow hole #2
+          new THREE.Vector3(6.62, 0, -0.92),  // Masonry burrow hole #3 beside metal tub
+          new THREE.Vector3(6.18, 0, -0.42)   // Behind left edge of tub
+        ],
+        waypoints: [
+          new THREE.Vector3(3.15, 0, -0.45),
+          new THREE.Vector3(4.10, 0, -0.32),
+          new THREE.Vector3(4.95, 0,  0.25),
+          new THREE.Vector3(5.75, 0, -0.38),
+          new THREE.Vector3(3.45, 0,  0.55),
+          new THREE.Vector3(5.45, 0,  0.48),
+          new THREE.Vector3(6.25, 0,  0.35),
+          new THREE.Vector3(4.45, 0,  1.55)
+        ]
+      }
+    ];
+
+    let sharedRatFurMat, sharedRatSkinMat;
+
+    function initRatSharedMaterials() {
+      sharedRatFurMat = new THREE.MeshStandardMaterial({
+        map: pbr.ratFur.map,
+        normalMap: pbr.ratFur.normalMap,
+        normalScale: new THREE.Vector2(1.1, 1.1),
+        roughnessMap: pbr.ratFur.roughnessMap,
+        roughness: 0.88,
+        metalness: 0.02
+      });
+
+      sharedRatSkinMat = new THREE.MeshStandardMaterial({
+        color: 0x9b9592,
+        roughness: 0.72,
+        metalness: 0.04
+      });
+    }
+
+    class FarmRat {
+      constructor(id, zoneIdx) {
+        this.id = id;
+        this.zoneIdx = zoneIdx;
+        this.sizeScale = 0.88 + Math.random() * 0.28; // Natural adult barn rat variation
+        this.root = new THREE.Group();
+        this.bodyPivot = new THREE.Group();
+        this.root.add(this.bodyPivot);
+
+        this.buildMesh();
+
+        // AI State
+        this.aiState = 'HIDDEN';
+        this.stateTimer = 0.4 + Math.random() * 2.5;
+        this.burrowPos = new THREE.Vector3();
+        this.peekPos = new THREE.Vector3();
+        this.targetPos = new THREE.Vector3();
+        this.facingYaw = 0;
+        this.targetYaw = 0;
+        this.speed = 0;
+        this.gaitPhase = Math.random() * Math.PI * 2;
+        this.rearAmount = 0;
+        this.sniffPartner = null;
+        this.deadTimer = 0;
+        this.deathRollDir = Math.random() < 0.5 ? 1 : -1;
+        this.deathFallProgress = 0;
+        this.alive = true;
+        this.squeakCooldown = 4 + Math.random() * 12;
+
+        this.pickBurrow();
+        this.root.position.copy(this.burrowPos);
+        this.root.position.y = getFloorHeight(this.burrowPos.x, this.burrowPos.z);
+
+        // Start about half the rats already peeking or foraging so the barn is alive immediately
+        if (id < 5) {
+          this.enterPeek(true);
+        } else if (id < 7) {
+          const wp = this.pickRandomWaypoint();
+          this.root.position.set(wp.x, getFloorHeight(wp.x, wp.z), wp.z);
+          this.aiState = 'FORAGING';
+          this.stateTimer = 2.0 + Math.random() * 3.0;
+          this.facingYaw = (Math.random() - 0.5) * 1.4;
+          this.targetYaw = this.facingYaw;
+        }
+
+        scene.add(this.root);
+      }
+
+      buildMesh() {
+        const s = this.sizeScale;
+        this.bodyPivot.scale.setScalar(s);
+
+        // 1. Hunched Oval Torso (arched dorsal profile)
+        const torsoGeo = new THREE.SphereGeometry(0.115, 18, 14);
+        torsoGeo.scale(0.86, 0.78, 1.48);
+        const torso = new THREE.Mesh(torsoGeo, sharedRatFurMat);
+        torso.position.set(0, 0.095, -0.01);
+        torso.castShadow = true;
+        torso.receiveShadow = true;
+        this.bodyPivot.add(torso);
+        this.torsoMesh = torso;
+
+        // 2. Rounded Haunches / Rump
+        const rumpGeo = new THREE.SphereGeometry(0.105, 14, 12);
+        rumpGeo.scale(0.92, 0.85, 1.05);
+        const rump = new THREE.Mesh(rumpGeo, sharedRatFurMat);
+        rump.position.set(0, 0.092, -0.11);
+        rump.castShadow = true;
+        rump.receiveShadow = true;
+        this.bodyPivot.add(rump);
+
+        // 3. Articulated Head Group (tapered snout, nose, rounded ears, luminous IR eyes)
+        this.headGroup = new THREE.Group();
+        this.headGroup.position.set(0, 0.112, 0.145);
+        this.bodyPivot.add(this.headGroup);
+
+        const craniumGeo = new THREE.SphereGeometry(0.068, 14, 12);
+        craniumGeo.scale(0.88, 0.82, 1.15);
+        const cranium = new THREE.Mesh(craniumGeo, sharedRatFurMat);
+        cranium.castShadow = true;
+        this.headGroup.add(cranium);
+
+        const snoutGeo = new THREE.ConeGeometry(0.044, 0.105, 12);
+        snoutGeo.rotateX(Math.PI / 2);
+        const snout = new THREE.Mesh(snoutGeo, sharedRatFurMat);
+        snout.position.set(0, -0.012, 0.088);
+        snout.castShadow = true;
+        this.headGroup.add(snout);
+
+        const nose = new THREE.Mesh(new THREE.SphereGeometry(0.014, 8, 8), sharedRatSkinMat);
+        nose.position.set(0, -0.01, 0.14);
+        this.headGroup.add(nose);
+
+        // Rounded semi-translucent rodent ears
+        const earGeo = new THREE.SphereGeometry(0.032, 10, 8);
+        earGeo.scale(0.35, 1.0, 0.88);
+        const earL = new THREE.Mesh(earGeo, sharedRatSkinMat);
+        earL.position.set(-0.048, 0.044, -0.012);
+        earL.rotation.set(-0.18, -0.4, 0.35);
+        this.headGroup.add(earL);
+
+        const earR = new THREE.Mesh(earGeo, sharedRatSkinMat);
+        earR.position.set(0.048, 0.044, -0.012);
+        earR.rotation.set(-0.18, 0.4, -0.35);
+        this.headGroup.add(earR);
+
+        // 4. SIGNATURE IR TAPETUM LUCIDUM EYESHINE (Pure white luminous spheres + additive glow halos)
+        this.eyeMatL = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1) });
+        this.eyeMatR = new THREE.MeshBasicMaterial({ color: new THREE.Color(1, 1, 1) });
+
+        const eyeGeo = new THREE.SphereGeometry(0.0155, 10, 10);
+        this.eyeL = new THREE.Mesh(eyeGeo, this.eyeMatL);
+        this.eyeL.position.set(-0.041, 0.014, 0.046);
+        this.headGroup.add(this.eyeL);
+
+        this.eyeR = new THREE.Mesh(eyeGeo, this.eyeMatR);
+        this.eyeR.position.set(0.041, 0.014, 0.046);
+        this.headGroup.add(this.eyeR);
+
+        this.glowMatL = new THREE.SpriteMaterial({
+          map: pbr.eyeGlow,
+          color: 0xffffff,
+          transparent: true,
+          opacity: 0.9,
+          blending: THREE.AdditiveBlending,
+          depthWrite: false
+        });
+        this.glowMatR = this.glowMatL.clone();
+
+        this.eyeGlowL = new THREE.Sprite(this.glowMatL);
+        this.eyeGlowL.scale.set(0.088, 0.088, 1);
+        this.eyeL.add(this.eyeGlowL);
+
+        this.eyeGlowR = new THREE.Sprite(this.glowMatR);
+        this.eyeGlowR.scale.set(0.088, 0.088, 1);
+        this.eyeR.add(this.eyeGlowR);
+
+        // 5. Articulated Legs / Paws
+        const legGeo = new THREE.CapsuleGeometry(0.018, 0.055, 4, 8);
+        this.legs = [];
+        const legCoords = [
+          [-0.065, 0.042,  0.09],
+          [ 0.065, 0.042,  0.09],
+          [-0.072, 0.048, -0.10],
+          [ 0.072, 0.048, -0.10]
+        ];
+        legCoords.forEach(c => {
+          const leg = new THREE.Mesh(legGeo, sharedRatSkinMat);
+          leg.position.set(c[0], c[1], c[2]);
+          leg.castShadow = true;
+          this.bodyPivot.add(leg);
+          this.legs.push(leg);
+        });
+
+        // 6. Segmented Curved Tapering Tail (5 articulated joints)
+        this.tailSegs = [];
+        let parent = this.bodyPivot;
+        let zOffset = -0.195;
+        let yOffset = 0.062;
+        for (let i = 0; i < 5; i++) {
+          const r1 = 0.017 * (1 - i * 0.16);
+          const r2 = 0.017 * (1 - (i + 1) * 0.16);
+          const segLen = 0.072;
+          const piv = new THREE.Group();
+          piv.position.set(0, yOffset, zOffset);
+          const segGeo = new THREE.CylinderGeometry(r2, r1, segLen, 8);
+          segGeo.rotateX(Math.PI / 2);
+          segGeo.translate(0, 0, -segLen * 0.5);
+          const segMesh = new THREE.Mesh(segGeo, sharedRatSkinMat);
+          segMesh.castShadow = true;
+          piv.add(segMesh);
+          parent.add(piv);
+          this.tailSegs.push(piv);
+          parent = piv;
+          zOffset = -segLen;
+          yOffset = -0.008;
+        }
+
+        // 7. Invisible Generous Precision Hitboxes (Head Vital & Body Torso)
+        const hitMat = new THREE.MeshBasicMaterial({ visible: false });
+        const headHit = new THREE.Mesh(new THREE.SphereGeometry(0.088, 10, 8), hitMat);
+        headHit.position.set(0, 0.005, 0.035);
+        headHit.userData = { isRat: true, isHead: true, rat: this };
+        this.headGroup.add(headHit);
+
+        const bodyHit = new THREE.Mesh(new THREE.SphereGeometry(0.135, 10, 8), hitMat);
+        bodyHit.scale.set(0.92, 0.85, 1.48);
+        bodyHit.position.set(0, 0.095, -0.02);
+        bodyHit.userData = { isRat: true, isHead: false, rat: this };
+        this.bodyPivot.add(bodyHit);
+
+        this.hitColliders = [headHit, bodyHit];
+        ratHitMeshes.push(headHit, bodyHit);
+      }
+
+      pickBurrow() {
+        const z = ZONES[this.zoneIdx];
+        const b = z.burrows[Math.floor(Math.random() * z.burrows.length)];
+        this.burrowPos.copy(b);
+        this.burrowPos.x += (Math.random() - 0.5) * 0.14;
+      }
+
+      pickRandomWaypoint() {
+        // Occasionally wander into an adjacent zone
+        if (Math.random() < 0.18) {
+          const shift = Math.random() < 0.5 ? -1 : 1;
+          this.zoneIdx = Math.max(0, Math.min(2, this.zoneIdx + shift));
+        }
+        const z = ZONES[this.zoneIdx];
+        const wp = z.waypoints[Math.floor(Math.random() * z.waypoints.length)].clone();
+        wp.x += (Math.random() - 0.5) * 0.45;
+        wp.z += (Math.random() - 0.5) * 0.35;
+        return wp;
+      }
+
+      enterPeek(immediate = false) {
+        this.aiState = 'PEEKING';
+        this.stateTimer = 1.6 + Math.random() * 2.8;
+        this.peekPos.copy(this.burrowPos);
+        // Poke snout & eyes slightly out of dark burrow/trough cavity toward barn floor
+        this.peekPos.z += 0.24 + Math.random() * 0.12;
+        if (immediate) {
+          this.root.position.set(this.peekPos.x, getFloorHeight(this.peekPos.x, this.peekPos.z), this.peekPos.z);
+        }
+        this.targetYaw = (Math.random() - 0.5) * 0.85;
+      }
+
+      enterScurry(customTarget = null, fastBolt = false) {
+        this.aiState = fastBolt ? 'STARTLED' : 'SCURRYING';
+        this.targetPos.copy(customTarget || this.pickRandomWaypoint());
+        this.speed = fastBolt ? (2.35 + Math.random() * 0.65) : (0.95 + Math.random() * 0.65);
+        this.stateTimer = fastBolt ? 4.0 : 5.5;
+      }
+
+      startle(threatPos) {
+        if (!this.alive || this.aiState === 'HIDDEN' || this.aiState === 'STARTLED') return;
+        const dist = this.root.position.distanceTo(threatPos);
+        if (dist < 2.65) {
+          // Pick closest burrow in current zone and bolt straight back to cover
+          const burrows = ZONES[this.zoneIdx].burrows;
+          let best = burrows[0];
+          let bestD = Infinity;
+          for (const b of burrows) {
+            const d = this.root.position.distanceTo(b);
+            if (d < bestD) { bestD = d; best = b; }
+          }
+          this.burrowPos.copy(best);
+          this.enterScurry(this.burrowPos, true);
+        }
+      }
+
+      kill(isHeadshot, hitDir) {
+        if (!this.alive) return;
+        this.alive = false;
+        this.aiState = 'DEAD';
+        this.deadTimer = 0;
+        this.deathFallProgress = 0;
+        this.deathRollDir = (hitDir.x >= 0 ? 1 : -1) * (Math.random() < 0.75 ? 1 : -1);
+        this.rearAmount = 0;
+
+        // Disable hitboxes immediately so follow-up shots pass through cleanly
+        this.hitColliders.forEach(c => { c.userData.isRat = false; });
+
+        // Dim eyeshine on death
+        this.eyeMatL.color.setScalar(0.18);
+        this.eyeMatR.color.setScalar(0.18);
+        this.glowMatL.opacity = 0;
+        this.glowMatR.opacity = 0;
+      }
+
+      respawn() {
+        // Rotate zone slightly for continuous action across all 3 barn zones
+        this.zoneIdx = (this.zoneIdx + (Math.random() < 0.45 ? 1 : 0)) % 3;
+        this.pickBurrow();
+        this.root.position.set(this.burrowPos.x, getFloorHeight(this.burrowPos.x, this.burrowPos.z), this.burrowPos.z);
+        this.bodyPivot.rotation.set(0, 0, 0);
+        this.bodyPivot.position.set(0, 0, 0);
+        this.headGroup.rotation.set(0, 0, 0);
+        this.root.visible = true;
+        this.alive = true;
+        this.aiState = 'HIDDEN';
+        this.stateTimer = 0.8 + Math.random() * 2.4;
+        this.hitColliders.forEach(c => { c.userData.isRat = true; });
+      }
+
+      /**
+       * Updates realistic Tapetum Lucidum IR eyeshine based on viewing angle relative to coaxial IR torch.
+       */
+      updateEyeshine() {
+        if (!this.alive) return;
+        const headWorldPos = new THREE.Vector3();
+        this.headGroup.getWorldPosition(headWorldPos);
+        const toCam = camera.position.clone().sub(headWorldPos).normalize();
+
+        const headQuat = new THREE.Quaternion();
+        this.headGroup.getWorldQuaternion(headQuat);
+
+        // Rodent eyes sit laterally ~34 deg off snout axis, allowing blazing single-eye side-profile glints
+        const leftEyeDir = new THREE.Vector3(-0.54, 0.08, 0.84).normalize().applyQuaternion(headQuat);
+        const rightEyeDir = new THREE.Vector3( 0.54, 0.08, 0.84).normalize().applyQuaternion(headQuat);
+
+        const irBoost = 0.82 + state.irIndex * 0.14;
+
+        const dotL = leftEyeDir.dot(toCam);
+        const dotR = rightEyeDir.dot(toCam);
+
+        const shineL = smoothstep(0.10, 0.62, dotL) * irBoost;
+        const shineR = smoothstep(0.10, 0.62, dotR) * irBoost;
+
+        const cL = Math.min(1.0, 0.12 + shineL * 0.96);
+        const cR = Math.min(1.0, 0.12 + shineR * 0.96);
+
+        this.eyeMatL.color.setRGB(cL, cL, cL);
+        this.eyeMatR.color.setRGB(cR, cR, cR);
+
+        this.glowMatL.opacity = Math.min(1.0, Math.pow(Math.max(0, shineL), 1.35) * 0.92);
+        this.glowMatR.opacity = Math.min(1.0, Math.pow(Math.max(0, shineR), 1.35) * 0.92);
+
+        const scaleL = 0.055 + shineL * 0.052;
+        const scaleR = 0.055 + shineR * 0.052;
+        this.eyeGlowL.scale.set(scaleL, scaleL, 1);
+        this.eyeGlowR.scale.set(scaleR, scaleR, 1);
+      }
+
+      update(dt, time) {
+        if (this.aiState === 'DEAD') {
+          this.deadTimer += dt;
+          this.deathFallProgress = Math.min(1, this.deathFallProgress + dt * 6.5);
+          const ease = 1 - Math.pow(1 - this.deathFallProgress, 3);
+          this.bodyPivot.rotation.z = ease * (Math.PI * 0.48) * this.deathRollDir;
+          this.bodyPivot.rotation.x = ease * 0.14;
+          // Brief subtle twitch right after impact
+          if (this.deadTimer > 0.15 && this.deadTimer < 0.75) {
+            const twitch = Math.sin(this.deadTimer * 48) * Math.exp(-(this.deadTimer - 0.15) * 5.2);
+            this.tailSegs[0].rotation.y = twitch * 0.55;
+            this.legs[2].rotation.x = twitch * 0.6;
+          }
+          // Sink gently out after lying on barn floor for ~6.5s so fresh rats emerge
+          if (this.deadTimer > 6.5) {
+            const sink = (this.deadTimer - 6.5) / 1.4;
+            this.bodyPivot.position.y = -sink * 0.28;
+            if (sink >= 1) {
+              this.respawn();
+            }
+          }
+          return;
+        }
+
+        // Occasional subtle ambient rat squeak
+        this.squeakCooldown -= dt;
+        if (this.squeakCooldown <= 0 && this.aiState !== 'HIDDEN') {
+          this.squeakCooldown = 9 + Math.random() * 18;
+          if (Math.random() < 0.35 && state.phase === 'playing') {
+            audio.playDistantRatSqueak(this.root.position.x);
+          }
+        }
+
+        this.stateTimer -= dt;
+
+        // --- AI STATE TRANSITIONS & MOVEMENT ---
+        if (this.aiState === 'HIDDEN') {
+          this.root.position.lerp(this.burrowPos, Math.min(1, dt * 6));
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z) - 0.03;
+          if (this.stateTimer <= 0) {
+            this.enterPeek(false);
+          }
+        } else if (this.aiState === 'PEEKING') {
+          this.root.position.lerp(this.peekPos, Math.min(1, dt * 3.2));
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z);
+          // Cautious side-to-side head scanning from dark burrow
+          this.headGroup.rotation.y = Math.sin(time * 2.2 + this.id * 1.7) * 0.42;
+          this.headGroup.rotation.x = Math.sin(time * 3.8 + this.id) * 0.08;
+
+          if (this.stateTimer <= 0) {
+            if (Math.random() < 0.78) {
+              this.enterScurry();
+            } else {
+              this.aiState = 'HIDDEN';
+              this.stateTimer = 1.4 + Math.random() * 2.2;
+            }
+          }
+        } else if (this.aiState === 'SCURRYING' || this.aiState === 'STARTLED') {
+          const dx = this.targetPos.x - this.root.position.x;
+          const dz = this.targetPos.z - this.root.position.z;
+          const dist = Math.hypot(dx, dz);
+
+          if (dist < 0.14 || this.stateTimer <= 0) {
+            if (this.aiState === 'STARTLED') {
+              this.aiState = 'HIDDEN';
+              this.stateTimer = 2.6 + Math.random() * 3.2;
+            } else {
+              // Arrived at waypoint: forage, rear up, or scurry onward
+              const roll = Math.random();
+              if (roll < 0.62) {
+                this.aiState = 'FORAGING';
+                this.stateTimer = 1.8 + Math.random() * 3.4;
+              } else if (roll < 0.82) {
+                this.aiState = 'REARING';
+                this.stateTimer = 1.3 + Math.random() * 1.8;
+                // Turn slightly toward barn center/camera when rearing to look around
+                this.targetYaw = Math.atan2(camera.position.x - this.root.position.x, camera.position.z - this.root.position.z) + (Math.random() - 0.5) * 0.8;
+              } else {
+                this.enterScurry();
+              }
+            }
+          } else {
+            const step = Math.min(dist, this.speed * dt);
+            this.root.position.x += (dx / dist) * step;
+            this.root.position.z += (dz / dist) * step;
+            this.targetYaw = Math.atan2(dx, dz);
+            this.gaitPhase += dt * (this.aiState === 'STARTLED' ? 28 : 18);
+
+            // Check for nose-to-nose social sniff with another nearby foraging rat
+            if (this.aiState === 'SCURRYING' && Math.random() < dt * 1.4) {
+              for (const other of rats) {
+                if (other !== this && other.alive && (other.aiState === 'FORAGING' || other.aiState === 'SCURRYING')) {
+                  const d = this.root.position.distanceTo(other.root.position);
+                  if (d > 0.24 && d < 0.52) {
+                    this.aiState = 'SOCIAL_SNIFF';
+                    this.stateTimer = 1.4 + Math.random() * 1.6;
+                    this.targetYaw = Math.atan2(other.root.position.x - this.root.position.x, other.root.position.z - this.root.position.z);
+                    other.aiState = 'SOCIAL_SNIFF';
+                    other.stateTimer = this.stateTimer;
+                    other.targetYaw = Math.atan2(this.root.position.x - other.root.position.x, this.root.position.z - other.root.position.z);
+                    break;
+                  }
+                }
+              }
+            }
+          }
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z);
+        } else if (this.aiState === 'FORAGING') {
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z);
+          // Rapid nose dipping & sniffing dirt/pebbles
+          this.headGroup.rotation.x = 0.28 + Math.sin(time * 9.5 + this.id) * 0.14;
+          this.headGroup.rotation.y = Math.sin(time * 2.8 + this.id * 2.1) * 0.36;
+
+          if (this.stateTimer <= 0) {
+            const r = Math.random();
+            if (r < 0.22) {
+              this.aiState = 'REARING';
+              this.stateTimer = 1.4 + Math.random() * 1.6;
+              this.targetYaw = (Math.random() - 0.5) * 1.2;
+            } else if (r < 0.84) {
+              this.enterScurry();
+            } else {
+              this.enterScurry(this.burrowPos, false);
+            }
+          }
+        } else if (this.aiState === 'REARING') {
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z);
+          this.headGroup.rotation.x = -0.18 + Math.sin(time * 5.0 + this.id) * 0.08;
+          this.headGroup.rotation.y = Math.sin(time * 3.1 + this.id) * 0.45;
+          if (this.stateTimer <= 0) {
+            this.enterScurry();
+          }
+        } else if (this.aiState === 'SOCIAL_SNIFF') {
+          this.root.position.y = getFloorHeight(this.root.position.x, this.root.position.z);
+          this.headGroup.rotation.x = 0.08 + Math.sin(time * 12 + this.id) * 0.10;
+          this.headGroup.rotation.y = Math.sin(time * 7 + this.id) * 0.14;
+          if (this.stateTimer <= 0) {
+            this.enterScurry();
+          }
+        }
+
+        // Smooth yaw turn toward targetYaw
+        let diff = this.targetYaw - this.facingYaw;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        this.facingYaw += diff * Math.min(1, dt * 8.5);
+        this.root.rotation.y = this.facingYaw;
+
+        // Smooth rearing posture on hind legs (00:27)
+        const desiredRear = this.aiState === 'REARING' ? 1 : 0;
+        this.rearAmount += (desiredRear - this.rearAmount) * Math.min(1, dt * 7);
+        this.bodyPivot.rotation.x = -this.rearAmount * 0.82;
+        this.bodyPivot.position.y = this.rearAmount * 0.085;
+
+        // Procedural scurry body bob, leg cycling & tail sway
+        const moving = (this.aiState === 'SCURRYING' || this.aiState === 'STARTLED');
+        if (moving) {
+          const bob = Math.abs(Math.sin(this.gaitPhase)) * 0.022;
+          this.bodyPivot.position.y += bob;
+          this.bodyPivot.rotation.z = Math.sin(this.gaitPhase) * 0.07;
+          this.headGroup.rotation.x = Math.sin(this.gaitPhase * 2) * 0.07;
+          this.headGroup.rotation.y *= 0.85;
+
+          const legSwing = Math.sin(this.gaitPhase) * 0.65;
+          this.legs[0].rotation.x =  legSwing;
+          this.legs[1].rotation.x = -legSwing;
+          this.legs[2].rotation.x = -legSwing;
+          this.legs[3].rotation.x =  legSwing;
+        } else {
+          // Subtle breathing animation when paused
+          const breath = Math.sin(time * 5.2 + this.id) * 0.025;
+          this.torsoMesh.scale.set(0.86 + breath, 0.78 + breath, 1.48);
+          this.bodyPivot.rotation.z *= 0.88;
+          this.legs.forEach((l, i) => {
+            l.rotation.x = this.rearAmount > 0.2 && i < 2 ? -0.65 : l.rotation.x * 0.85;
+          });
+        }
+
+        // Tail sinusoidal drag & sway
+        for (let i = 0; i < this.tailSegs.length; i++) {
+          const sway = Math.sin(time * (moving ? 14 : 2.2) - i * 0.7 + this.id) * (moving ? 0.24 : 0.06);
+          this.tailSegs[i].rotation.y = sway;
+          this.tailSegs[i].rotation.x = i === 0 ? (0.14 + this.rearAmount * 0.65) : 0.04;
+        }
+
+        this.updateEyeshine();
+      }
+    }
+
+    function spawnRats() {
+      initRatSharedMaterials();
+      // Distribute 9 active rats evenly across Left (0), Center (1), Right (2) barn zones
+      for (let i = 0; i < CONFIG.maxRats; i++) {
+        const zoneIdx = i % 3;
+        rats.push(new FarmRat(i, zoneIdx));
+      }
+    }
+
+    // =========================================================================
+    // 8. BALLISTICS, IR-LIT PELLET STREAK & VOLUMETRIC DUST PLUMES
+    // =========================================================================
+    const pelletGeo = new THREE.ConeGeometry(0.013, 0.34, 8);
+    pelletGeo.rotateX(Math.PI / 2);
+    const pelletMat = new THREE.MeshBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.94
+    });
+
+    function spawnDustPlume(pos, normal, hitMatType) {
+      const count = hitMatType === 'rat' ? 6 : (hitMatType === 'dirt' ? 14 : 10);
+      for (let i = 0; i < count; i++) {
+        const isFlecks = i >= count * 0.55;
+        const sprMat = new THREE.SpriteMaterial({
+          map: pbr.dustSprite,
+          color: hitMatType === 'concrete' ? 0xf6f8f6 : 0xe4e8e4,
+          transparent: true,
+          opacity: isFlecks ? 0.85 : 0.58,
+          depthWrite: false
+        });
+        const spr = new THREE.Sprite(sprMat);
+        spr.position.copy(pos).addScaledVector(normal, 0.04);
+
+        const spread = isFlecks ? 1.85 : 0.95;
+        const vel = new THREE.Vector3(
+          normal.x * (0.6 + Math.random() * 1.1) + (Math.random() - 0.5) * spread,
+          Math.abs(normal.y) * (0.5 + Math.random() * 1.2) + 0.35 + Math.random() * 0.9,
+          normal.z * (0.6 + Math.random() * 1.1) + (Math.random() - 0.5) * spread
+        );
+        const startScale = isFlecks ? (0.03 + Math.random() * 0.035) : (0.14 + Math.random() * 0.16);
+        spr.scale.set(startScale, startScale, 1);
+        scene.add(spr);
+
+        dustParticles.push({
+          sprite: spr,
+          vel,
+          age: 0,
+          life: isFlecks ? (0.38 + Math.random() * 0.28) : (0.72 + Math.random() * 0.65),
+          startScale,
+          growRate: isFlecks ? 0.05 : (0.68 + Math.random() * 0.45),
+          gravity: isFlecks ? 4.8 : 0.35,
+          initOpacity: sprMat.opacity
+        });
+      }
+    }
+
+    function updateDustParticles(dt) {
+      for (let i = dustParticles.length - 1; i >= 0; i--) {
+        const p = dustParticles[i];
+        p.age += dt;
+        if (p.age >= p.life) {
+          scene.remove(p.sprite);
+          p.sprite.material.dispose();
+          dustParticles.splice(i, 1);
+          continue;
+        }
+        p.vel.y -= p.gravity * dt;
+        p.vel.multiplyScalar(1 - dt * 1.6);
+        p.sprite.position.addScaledVector(p.vel, dt);
+
+        const t = p.age / p.life;
+        const sc = p.startScale + t * p.growRate;
+        p.sprite.scale.set(sc, sc, 1);
+        p.sprite.material.opacity = p.initOpacity * Math.pow(1 - t, 1.45);
+      }
+    }
+
+    function firePellet() {
+      if (state.phase !== 'playing') return;
+      if (state.reloading || state.fireCooldown > 0) return;
+
+      if (state.ammo <= 0) {
+        audio.playClick(620);
+        dom.emptyHint.classList.remove('hidden');
+        return;
+      }
+
+      audio.unlock();
+      audio.playPCPShot();
+
+      state.ammo--;
+      state.shotsFired++;
+      state.fireCooldown = 0.28;
+      updateHudStats();
+
+      // Subtle suppressed PCP airgun recoil kick & reticle micro-bounce
+      state.recoilPitch += 0.0085 + Math.random() * 0.003;
+      state.recoilYaw += (Math.random() - 0.5) * 0.004;
+      state.recoilShake = 1.0;
+
+      // Aim point at exact center reticle
+      raycaster.setFromCamera(centerNDC, camera);
+      const aimDir = raycaster.ray.direction.clone().normalize();
+
+      // Determine calibrated target point (~9m zero) so pellet converges cleanly into reticle from barrel below scope
+      const hitCheck = raycaster.intersectObjects([...ratHitMeshes, ...envHitMeshes], false);
+      const zeroDist = hitCheck.length > 0 ? Math.max(3.5, Math.min(13.5, hitCheck[0].distance)) : 8.8;
+      const targetPoint = camera.position.clone().addScaledVector(aimDir, zeroDist);
+
+      // Barrel muzzle sits ~5.5cm below optical scope axis (creates authentic upward-converging IR streak seen in 00:03, 00:19, 00:33, 00:54!)
+      const camDown = new THREE.Vector3(0, -1, 0).applyQuaternion(camera.quaternion);
+      const camFwd  = new THREE.Vector3(0, 0, -1).applyQuaternion(camera.quaternion);
+      const muzzlePos = camera.position.clone()
+        .addScaledVector(camDown, 0.068)
+        .addScaledVector(camFwd, 0.42);
+
+      // Compensate slightly for ballistic drop over zeroDist so dead-on shots hit cleanly at barn range
+      const flightEst = zeroDist / CONFIG.pelletSpeed;
+      const dropComp = 0.5 * CONFIG.pelletGravity * flightEst * flightEst;
+      targetPoint.y += dropComp;
+
+      const velDir = targetPoint.clone().sub(muzzlePos).normalize();
+      const vel = velDir.multiplyScalar(CONFIG.pelletSpeed);
+
+      const mesh = new THREE.Mesh(pelletGeo, pelletMat.clone());
+      mesh.position.copy(muzzlePos);
+      mesh.lookAt(muzzlePos.clone().add(vel));
+      scene.add(mesh);
+
+      projectiles.push({
+        mesh,
+        pos: muzzlePos.clone(),
+        vel,
+        age: 0,
+        maxLife: 0.45
+      });
+
+      if (state.ammo === 0) {
+        dom.emptyHint.classList.remove('hidden');
+      }
+    }
+
+    function updateProjectiles(dt) {
+      const segRay = new THREE.Raycaster();
+
+      for (let i = projectiles.length - 1; i >= 0; i--) {
+        const p = projectiles[i];
+        p.age += dt;
+        if (p.age > p.maxLife) {
+          scene.remove(p.mesh);
+          p.mesh.material.dispose();
+          projectiles.splice(i, 1);
+          continue;
+        }
+
+        const prevPos = p.pos.clone();
+        p.vel.y -= CONFIG.pelletGravity * dt;
+        const stepVec = p.vel.clone().multiplyScalar(dt);
+        const stepLen = stepVec.length();
+        const stepDir = stepVec.clone().normalize();
+
+        // Swept raycast against active rat hitboxes first, then environment
+        const activeRatColliders = ratHitMeshes.filter(m => m.userData.isRat);
+        segRay.set(prevPos, stepDir);
+        segRay.near = 0;
+        segRay.far = stepLen + 0.08;
+
+        const ratHits = segRay.intersectObjects(activeRatColliders, false);
+        const envHits = segRay.intersectObjects(envHitMeshes, false);
+
+        let hitObj = null;
+        let isRatHit = false;
+
+        if (ratHits.length > 0 && (envHits.length === 0 || ratHits[0].distance <= envHits[0].distance)) {
+          hitObj = ratHits[0];
+          isRatHit = true;
+        } else if (envHits.length > 0) {
+          hitObj = envHits[0];
+        }
+
+        if (hitObj) {
+          const hitPoint = hitObj.point;
+          const normal = hitObj.face ? hitObj.face.normal.clone().transformDirection(hitObj.object.matrixWorld).normalize() : new THREE.Vector3(0, 1, 0);
+
+          if (isRatHit) {
+            const rat = hitObj.object.userData.rat;
+            const isHead = hitObj.object.userData.isHead;
+            rat.kill(isHead, stepDir);
+
+            state.hits++;
+            if (isHead) state.headshots++;
+            state.score += isHead ? 150 : 100;
+
+            audio.playImpact('rat', hitPoint.x, isHead);
+            spawnDustPlume(hitPoint, normal, 'rat');
+            triggerHitmarker(isHead);
+            pushFeed(isHead ? 'VITAL HEADSHOT +150' : 'PEST ELIMINATED +100');
+            updateHudStats();
+          } else {
+            const matType = hitObj.object.userData.hitMaterial || 'dirt';
+            audio.playImpact(matType, hitPoint.x, false);
+            spawnDustPlume(hitPoint, normal, matType);
+          }
+
+          // Startle nearby rats so they bolt back to cover/burrows!
+          rats.forEach(r => r.startle(hitPoint));
+
+          scene.remove(p.mesh);
+          p.mesh.material.dispose();
+          projectiles.splice(i, 1);
+          continue;
+        }
+
+        // Advance pellet & stretch streak slightly for authentic IR motion blur
+        p.pos.add(stepVec);
+        p.mesh.position.copy(p.pos);
+        p.mesh.lookAt(p.pos.clone().add(p.vel));
+        const streakScale = 0.8 + p.age * 4.5;
+        p.mesh.scale.set(1.0, 1.0, streakScale);
+      }
+    }
+
+    // =========================================================================
+    // 9. HUD, CONTROLS, BREATH SWAY, ZOOM & MODE MANAGEMENT
+    // =========================================================================
+    let hitmarkerTimeout = null;
+    function triggerHitmarker(isHead) {
+      if (state.rawHud) return;
+      dom.hitmarker.querySelectorAll('line').forEach(l => {
+        l.setAttribute('stroke', isHead ? '#39ff5a' : '#e4ece6');
+      });
+      dom.hitmarker.classList.add('active');
+      clearTimeout(hitmarkerTimeout);
+      hitmarkerTimeout = setTimeout(() => dom.hitmarker.classList.remove('active'), 160);
+    }
+
+    function pushFeed(text) {
+      if (state.rawHud) return;
+      const el = document.createElement('div');
+      el.className = 'feed-item';
+      el.textContent = text;
+      dom.killFeed.appendChild(el);
+      setTimeout(() => el.remove(), 1550);
+    }
+
+    function updateHudStats() {
+      dom.hudMag.textContent = `${state.ammo}/${CONFIG.magCapacity}`;
+      dom.hudMag.style.color = state.ammo <= 2 ? '#f87171' : '#f4f4f5';
+      dom.hudHits.textContent = String(state.hits);
+      dom.hudHeadshots.textContent = String(state.headshots);
+      dom.hudScore.textContent = String(state.score);
+      const acc = state.shotsFired > 0 ? Math.round((state.hits / state.shotsFired) * 100) : 0;
+      dom.hudAcc.textContent = state.shotsFired > 0 ? `${acc}%` : '--%';
+      dom.hudZoom.textContent = CONFIG.zoomLevels[state.zoomIndex].label;
+      dom.hudIr.textContent = CONFIG.irLevels[state.irIndex].label;
+    }
+
+    function formatTime(sec) {
+      const s = Math.max(0, Math.ceil(sec));
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+    }
+
+    function startReload() {
+      if (state.reloading || state.ammo >= CONFIG.magCapacity || state.phase !== 'playing') return;
+      state.reloading = true;
+      state.reloadTimer = CONFIG.reloadDuration;
+      dom.emptyHint.classList.add('hidden');
+      dom.reloadInd.classList.remove('hidden');
+      audio.playReload();
+    }
+
+    function cycleZoom(delta = 1) {
+      if (state.phase !== 'playing') return;
+      state.zoomIndex = (state.zoomIndex + delta + CONFIG.zoomLevels.length) % CONFIG.zoomLevels.length;
+      audio.playClick(950 + state.zoomIndex * 220);
+      updateHudStats();
+    }
+
+    function cycleIRIntensity() {
+      state.irIndex = (state.irIndex + 1) % CONFIG.irLevels.length;
+      const lvl = CONFIG.irLevels[state.irIndex];
+      irSpotMain.intensity = lvl.main;
+      irSpotFill.intensity = lvl.fill;
+      ambientLight.intensity = lvl.ambient;
+      audio.playClick(1350);
+      updateHudStats();
+    }
+
+    function toggleRawHud() {
+      state.rawHud = !state.rawHud;
+      dom.scopeHud.classList.toggle('raw-hidden', state.rawHud);
+      audio.playClick(1200);
+    }
+
+    function requestScopePointerLock() {
+      try {
+        if (renderer && renderer.domElement && renderer.domElement.requestPointerLock) {
+          const p = renderer.domElement.requestPointerLock();
+          if (p && typeof p.catch === 'function') {
+            p.catch(() => {}); // Silently fall back to mouse-move / drag aiming
+          }
+        }
+      } catch (e) {
+        // Fallback aiming remains active automatically
+      }
+    }
+
+    function resetSession(mode) {
+      state.mode = mode;
+      state.phase = 'playing';
+      state.ammo = CONFIG.magCapacity;
+      state.reloading = false;
+      state.reloadTimer = 0;
+      state.fireCooldown = 0;
+      state.timeRemaining = CONFIG.roundDuration;
+      state.elapsedEndless = 0;
+      state.shotsFired = 0;
+      state.hits = 0;
+      state.headshots = 0;
+      state.score = 0;
+      state.zoomIndex = 0;
+      state.holdingBreath = false;
+      state.breathStamina = 1.0;
+      state.breathExhausted = false;
+
+      dom.startOverlay.classList.add('hidden');
+      dom.pauseOverlay.classList.add('hidden');
+      dom.summaryOverlay.classList.add('hidden');
+      dom.reloadInd.classList.add('hidden');
+      dom.emptyHint.classList.add('hidden');
+
+      dom.hudMode.textContent = mode === 'timed' ? '60S CLEARANCE' : 'NIGHT WATCH';
+      dom.hudTimer.textContent = mode === 'timed' ? formatTime(CONFIG.roundDuration) : '00:00';
+      updateHudStats();
+
+      // Wake up rats immediately so there are lively targets across zones
+      rats.forEach((r, idx) => {
+        if (!r.alive) r.respawn();
+        if (idx < 6 && r.aiState === 'HIDDEN') r.enterPeek(true);
+      });
+
+      audio.unlock();
+      requestScopePointerLock();
+    }
+
+    function finishTimedRound() {
+      state.phase = 'summary';
+      state.holdingBreath = false;
+      try {
+        if (document.pointerLockElement) document.exitPointerLock();
+      } catch (e) {}
+
+      const acc = state.shotsFired > 0 ? Math.round((state.hits / state.shotsFired) * 100) : 0;
+      dom.sumHits.textContent = String(state.hits);
+      dom.sumHeadshots.textContent = String(state.headshots);
+      dom.sumAccuracy.textContent = `${acc}%`;
+      dom.sumScore.textContent = String(state.score);
+
+      let grade = 'Perimeter cleared. Keep tracking burrow eyeshine.';
+      if (state.hits >= 14 && acc >= 70) grade = 'ELITE NIGHT MARKSMAN — Barn completely cleared.';
+      else if (state.hits >= 8) grade = 'SOLID PEST CONTROL — Clean subsonic shot placement.';
+      else if (state.hits >= 4) grade = 'GOOD START — Use SHIFT to steady breath on peering rats.';
+      dom.summaryGrade.textContent = grade;
+
+      dom.summaryOverlay.classList.remove('hidden');
+    }
+
+    function setupInputListeners() {
+      // Detect touch capability for mobile UI
+      const isTouch = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+      if (isTouch) dom.touchControls.classList.add('visible');
+
+      // Menu & Modal Buttons
+      document.getElementById('btn-start-timed').addEventListener('click', () => resetSession('timed'));
+      document.getElementById('btn-start-endless').addEventListener('click', () => resetSession('endless'));
+      document.getElementById('btn-replay-timed').addEventListener('click', () => resetSession('timed'));
+      document.getElementById('btn-switch-endless').addEventListener('click', () => resetSession('endless'));
+
+      document.getElementById('btn-resume').addEventListener('click', () => {
+        state.phase = 'playing';
+        dom.pauseOverlay.classList.add('hidden');
+        requestScopePointerLock();
+      });
+
+      document.getElementById('btn-back-menu').addEventListener('click', () => {
+        state.phase = 'menu';
+        dom.pauseOverlay.classList.add('hidden');
+        dom.startOverlay.classList.remove('hidden');
+        dom.hudMode.textContent = 'STANDBY';
+      });
+
+      // Pointer Lock State Changes
+      document.addEventListener('pointerlockchange', () => {
+        const locked = document.pointerLockElement === renderer.domElement;
+        state.pointerLocked = locked;
+        if (!locked && state.phase === 'playing' && !isTouch) {
+          state.phase = 'paused';
+          state.holdingBreath = false;
+          dom.pauseOverlay.classList.remove('hidden');
+        }
+      });
+
+      // Mouse Movement (Pointer Lock + Automatic Fallback Aiming)
+      window.addEventListener('mousemove', (e) => {
+        if (state.phase !== 'playing') return;
+        const sens = CONFIG.zoomLevels[state.zoomIndex].sens;
+
+        if (state.pointerLocked) {
+          state.yaw   -= e.movementX * sens;
+          state.pitch -= e.movementY * sens;
+        } else if (state.isDragging) {
+          const dx = e.clientX - state.lastPointerX;
+          const dy = e.clientY - state.lastPointerY;
+          state.lastPointerX = e.clientX;
+          state.lastPointerY = e.clientY;
+          state.yaw   -= dx * sens * 1.45;
+          state.pitch -= dy * sens * 1.45;
+        } else if (!isTouch) {
+          // Graceful hover-aim fallback if Pointer Lock was denied by sandbox iframe
+          const nx = (e.clientX / window.innerWidth) * 2 - 1;
+          const ny = (e.clientY / window.innerHeight) * 2 - 1;
+          const targetYaw = -nx * 0.74;
+          const targetPitch = -0.22 - ny * 0.21;
+          state.yaw += (targetYaw - state.yaw) * 0.22;
+          state.pitch += (targetPitch - state.pitch) * 0.22;
+        }
+
+        state.yaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, state.yaw));
+        state.pitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, state.pitch));
+      });
+
+      // Canvas Mouse Clicks (Fire LMB / Cycle Zoom RMB)
+      renderer.domElement.addEventListener('mousedown', (e) => {
+        if (state.phase !== 'playing') return;
+        audio.unlock();
+        if (e.button === 0) {
+          if (!state.pointerLocked && !isTouch) {
+            requestScopePointerLock();
+          }
+          state.isDragging = true;
+          state.lastPointerX = e.clientX;
+          state.lastPointerY = e.clientY;
+          firePellet();
+        } else if (e.button === 2) {
+          cycleZoom(1);
+        }
+      });
+
+      window.addEventListener('mouseup', () => { state.isDragging = false; });
+      renderer.domElement.addEventListener('contextmenu', (e) => e.preventDefault());
+
+      // Mouse Wheel Variable Scope Zoom
+      window.addEventListener('wheel', (e) => {
+        if (state.phase !== 'playing') return;
+        e.preventDefault();
+        cycleZoom(e.deltaY < 0 ? 1 : -1);
+      }, { passive: false });
+
+      // Keyboard Controls
+      window.addEventListener('keydown', (e) => {
+        if (e.repeat) return;
+        const code = e.code;
+
+        if (code === 'ShiftLeft' || code === 'ShiftRight') {
+          if (state.phase === 'playing' && !state.breathExhausted) {
+            state.holdingBreath = true;
+            audio.playBreath(true);
+          }
+        } else if (code === 'KeyR') {
+          startReload();
+        } else if (code === 'KeyF') {
+          cycleIRIntensity();
+        } else if (code === 'KeyH') {
+          toggleRawHud();
+        } else if (code === 'KeyZ') {
+          cycleZoom(1);
+        } else if (code === 'Escape') {
+          if (state.phase === 'playing' && !state.pointerLocked) {
+            state.phase = 'paused';
+            dom.pauseOverlay.classList.remove('hidden');
+          } else if (state.phase === 'paused') {
+            state.phase = 'playing';
+            dom.pauseOverlay.classList.add('hidden');
+            requestScopePointerLock();
+          }
+        }
+      });
+
+      window.addEventListener('keyup', (e) => {
+        if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') {
+          if (state.holdingBreath) {
+            state.holdingBreath = false;
+            audio.playBreath(false);
+          }
+        }
+      });
+
+      // Touch Drag Aiming & On-Screen Tactical Buttons
+      let activeTouchId = null;
+      let tx = 0, ty = 0;
+
+      renderer.domElement.addEventListener('touchstart', (e) => {
+        if (state.phase !== 'playing') return;
+        audio.unlock();
+        if (activeTouchId === null && e.changedTouches.length > 0) {
+          const t = e.changedTouches[0];
+          activeTouchId = t.identifier;
+          tx = t.clientX;
+          ty = t.clientY;
+        }
+      }, { passive: true });
+
+      renderer.domElement.addEventListener('touchmove', (e) => {
+        if (state.phase !== 'playing') return;
+        for (const t of e.changedTouches) {
+          if (t.identifier === activeTouchId) {
+            const dx = t.clientX - tx;
+            const dy = t.clientY - ty;
+            tx = t.clientX;
+            ty = t.clientY;
+            const sens = CONFIG.zoomLevels[state.zoomIndex].sens * 1.9;
+            state.yaw = Math.max(CONFIG.yawMin, Math.min(CONFIG.yawMax, state.yaw - dx * sens));
+            state.pitch = Math.max(CONFIG.pitchMin, Math.min(CONFIG.pitchMax, state.pitch - dy * sens));
+          }
+        }
+      }, { passive: true });
+
+      const endTouch = (e) => {
+        for (const t of e.changedTouches) {
+          if (t.identifier === activeTouchId) activeTouchId = null;
+        }
+      };
+      renderer.domElement.addEventListener('touchend', endTouch);
+      renderer.domElement.addEventListener('touchcancel', endTouch);
+
+      document.getElementById('btn-touch-fire').addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        firePellet();
+      });
+      document.getElementById('btn-touch-zoom').addEventListener('click', () => cycleZoom(1));
+      document.getElementById('btn-touch-ir').addEventListener('click', () => cycleIRIntensity());
+      document.getElementById('btn-touch-hud').addEventListener('click', () => toggleRawHud());
+      document.getElementById('btn-touch-reload').addEventListener('click', () => startReload());
+
+      const breathBtn = document.getElementById('btn-touch-breath');
+      breathBtn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        if (!state.breathExhausted) {
+          state.holdingBreath = true;
+          audio.playBreath(true);
+        }
+      });
+      breathBtn.addEventListener('touchend', () => {
+        state.holdingBreath = false;
+      });
+
+      // Responsive Resize
+      window.addEventListener('resize', () => {
+        const w = window.innerWidth;
+        const h = window.innerHeight;
+        camera.aspect = w / h;
+        camera.updateProjectionMatrix();
+        renderer.setSize(w, h);
+
+        const rw = Math.max(1, Math.floor(w * renderer.getPixelRatio()));
+        const rh = Math.max(1, Math.floor(h * renderer.getPixelRatio()));
+        sceneRT.setSize(rw, rh);
+        prevRT.setSize(rw, rh);
+        currRT.setSize(rw, rh);
+        finalMat.uniforms.uResolution.value.set(rw, rh);
+      });
+    }
+
+    // =========================================================================
+    // 10. MAIN SIMULATION & RENDER LOOP (60FPS)
+    // =========================================================================
+    let lastTime = 0;
+    let rangeUpdateTimer = 0;
+
+    function updateRangefinder() {
+      raycaster.setFromCamera(centerNDC, camera);
+      const hits = raycaster.intersectObjects([...ratHitMeshes.filter(m => m.userData.isRat), ...envHitMeshes], false);
+      if (hits.length > 0) {
+        const yards = (hits[0].distance * 1.09361).toFixed(1);
+        dom.hudRange.textContent = `${yards} YD`;
+      } else {
+        dom.hudRange.textContent = '--.- YD';
+      }
+    }
+
+    function animate(nowMs) {
+      requestAnimationFrame(animate);
+      const now = nowMs * 0.001;
+      const dt = Math.min(0.05, Math.max(0.001, lastTime ? now - lastTime : 0.016));
+      lastTime = now;
+
+      // 1. Update Mode Timers, Reload & Breath Stamina
+      if (state.phase === 'playing') {
+        if (state.fireCooldown > 0) state.fireCooldown -= dt;
+
+        if (state.reloading) {
+          state.reloadTimer -= dt;
+          if (state.reloadTimer <= 0) {
+            state.reloading = false;
+            state.ammo = CONFIG.magCapacity;
+            dom.reloadInd.classList.add('hidden');
+            dom.emptyHint.classList.add('hidden');
+            updateHudStats();
+          }
+        }
+
+        // Breath hold stamina
+        if (state.holdingBreath && !state.breathExhausted) {
+          state.breathStamina = Math.max(0, state.breathStamina - dt * 0.24);
+          if (state.breathStamina <= 0) {
+            state.breathExhausted = true;
+            state.holdingBreath = false;
+            audio.playBreath(false);
+          }
+        } else {
+          state.breathStamina = Math.min(1, state.breathStamina + dt * 0.19);
+          if (state.breathExhausted && state.breathStamina > 0.35) {
+            state.breathExhausted = false;
+          }
+        }
+
+        // Breath bar visibility
+        const showBreath = !state.rawHud && (state.holdingBreath || state.breathStamina < 0.98);
+        dom.breathWrap.style.opacity = showBreath ? '1' : '0';
+        dom.breathFill.style.width = `${Math.round(state.breathStamina * 100)}%`;
+        dom.breathFill.style.backgroundColor = state.breathExhausted ? '#ef4444' : '#39ff5a';
+
+        // Mode Clock
+        if (state.mode === 'timed') {
+          state.timeRemaining -= dt;
+          dom.hudTimer.textContent = formatTime(state.timeRemaining);
+          if (state.timeRemaining <= 10) {
+            dom.hudTimer.style.color = '#f87171';
+          } else {
+            dom.hudTimer.style.color = '#ffffff';
+          }
+          if (state.timeRemaining <= 0) {
+            finishTimedRound();
+          }
+        } else {
+          state.elapsedEndless += dt;
+          dom.hudTimer.style.color = '#ffffff';
+          dom.hudTimer.textContent = formatTime(state.elapsedEndless);
+        }
+      } else {
+        dom.breathWrap.style.opacity = '0';
+      }
+
+      // 2. Smooth Scope Zoom & Digital Softness Transition
+      const zCfg = CONFIG.zoomLevels[state.zoomIndex];
+      const desiredFov = state.phase === 'menu' ? 28.0 : zCfg.fov;
+      state.currentFov += (desiredFov - state.currentFov) * Math.min(1, dt * 11);
+      camera.fov = state.currentFov;
+      camera.updateProjectionMatrix();
+
+      const curSoft = finalMat.uniforms.uDigitalSoftness.value;
+      const targetSoft = state.phase === 'menu' ? 0.0 : zCfg.digitalSoftness;
+      finalMat.uniforms.uDigitalSoftness.value = curSoft + (targetSoft - curSoft) * Math.min(1, dt * 9);
+
+      // 3. Camera Aiming, Natural Breathing Sway & Recoil Recovery
+      if (state.phase === 'menu') {
+        // Live cinematic slow IR scan panning across all 3 barn zones behind the title overlay
+        state.menuTime += dt;
+        const scanYaw = Math.sin(state.menuTime * 0.22) * 0.62;
+        const scanPitch = -0.225 + Math.cos(state.menuTime * 0.31) * 0.035;
+        camera.rotation.y = scanYaw;
+        camera.rotation.x = scanPitch;
+        camera.rotation.z = 0;
+      } else {
+        const swayMult = state.holdingBreath ? 0.16 : zCfg.sway;
+        const swayX = (Math.sin(now * 1.15) * 0.0022 + Math.sin(now * 2.45) * 0.0009) * swayMult;
+        const swayY = (Math.cos(now * 0.88) * 0.0028 + Math.sin(now * 1.92) * 0.0010) * swayMult;
+
+        state.recoilPitch *= Math.exp(-dt * 12);
+        state.recoilYaw   *= Math.exp(-dt * 12);
+        state.recoilShake *= Math.exp(-dt * 16);
+
+        camera.rotation.y = state.yaw + swayX + state.recoilYaw;
+        camera.rotation.x = state.pitch + swayY + state.recoilPitch;
+        camera.rotation.z = (Math.random() - 0.5) * 0.006 * state.recoilShake;
+
+        finalMat.uniforms.uShakeOffset.value.set(
+          (Math.random() - 0.5) * 0.005 * state.recoilShake,
+          (Math.random() - 0.5) * 0.005 * state.recoilShake
+        );
+      }
+
+      // 4. Update Rats, Projectiles & Volumetric IR Dust Plumes
+      const simDt = state.phase === 'paused' ? 0 : dt;
+      if (simDt > 0) {
+        for (let i = 0; i < rats.length; i++) {
+          rats[i].update(simDt, now);
+        }
+        updateProjectiles(simDt);
+        updateDustParticles(simDt);
+      }
+
+      // 5. Update Live Laser Rangefinder (12 Hz)
+      rangeUpdateTimer += dt;
+      if (rangeUpdateTimer >= 0.085) {
+        rangeUpdateTimer = 0;
+        updateRangefinder();
+      }
+
+      // 6. MULTI-PASS DIGITAL IR POST-PROCESSING RENDER
+      // Pass A: Render 3D Barn Scene into offscreen sceneRT
+      renderer.setRenderTarget(sceneRT);
+      renderer.render(scene, camera);
+
+      // Pass B: Temporal IR Frame Persistence (blend sceneRT with prevRT -> currRT)
+      persistMat.uniforms.tCurrent.value = sceneRT.texture;
+      persistMat.uniforms.tPrev.value = prevRT.texture;
+      renderer.setRenderTarget(currRT);
+      renderer.render(postScenePersist, postCamera);
+
+      // Pass C: Final Monochrome Digital IR Sensor Optics Pass to Screen
+      finalMat.uniforms.tDiffuse.value = currRT.texture;
+      finalMat.uniforms.uTime.value = now;
+      renderer.setRenderTarget(null);
+      renderer.render(postSceneFinal, postCamera);
+
+      // Ping-pong swap temporal persistence buffers
+      const tmp = prevRT;
+      prevRT = currRT;
+      currRT = tmp;
+    }
+
+    // =========================================================================
+    // 11. INITIALIZATION ON WINDOW LOAD
+    // =========================================================================
+    window.onload = function () {
+      try {
+        dom.loadingBar.style.width = '35%';
+        dom.loadingStatus.textContent = 'Synthesizing 1024px PBR barn textures & Sobel normal maps...';
+
+        // Yield briefly so the browser paints the loading indicator cleanly
+        setTimeout(() => {
+          try {
+            pbr = generateAllPBRTextures();
+            dom.loadingBar.style.width = '72%';
+            dom.loadingStatus.textContent = 'Constructing 3-zone barn & calibrating 850nm IR optics...';
+
+            setTimeout(() => {
+              try {
+                initRendererAndPostProcessing();
+                buildBarnEnvironment();
+                spawnRats();
+                setupInputListeners();
+                updateHudStats();
+
+                dom.loadingBar.style.width = '100%';
+                dom.loadingOverlay.style.opacity = '0';
+                setTimeout(() => dom.loadingOverlay.remove(), 360);
+
+                requestAnimationFrame(animate);
+              } catch (err) {
+                console.error('Initialization error:', err);
+                dom.loadingStatus.textContent = 'WebGL initialization failed. Please reload in a WebGL-enabled browser.';
+              }
+            }, 40);
+          } catch (err) {
+            console.error('Texture synthesis error:', err);
+            dom.loadingStatus.textContent = 'Texture synthesis failed. Please reload.';
+          }
+        }, 40);
+      } catch (err) {
+        console.error('Boot error:', err);
+      }
+    };
+  </script>
+</body>
+</html>
